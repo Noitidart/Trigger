@@ -1,0 +1,9 @@
+label {
+	width: 9em;
+	font-weight: bold;
+	margin: 0 6px;
+}
+
+#root {
+	padding: 10px;
+}
