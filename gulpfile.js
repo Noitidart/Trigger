@@ -8,14 +8,18 @@
 // Include gulp
 var gulp = require('gulp');
 
+// Include core modules
+var fs = require('fs');
+var path = require('path');
+
 // Include Our Plugins
 var babel = require('gulp-babel');
 var clean = require('gulp-clean');
-var fs = require('fs');
 var gulpif = require('gulp-if');
 var gulp_src_ordered = require('gulp-src-ordered-globs'); // http://stackoverflow.com/a/40206149/1828637
 var jshint = require('gulp-jshint');
 var replace = require('gulp-replace');
+var rename = require('gulp-rename');
 var zip = require('gulp-zip');
 
 // Command line options
@@ -60,12 +64,39 @@ gulp.task('copy', ['clean'], function() {
 			'!src/.*',			// no hidden files/dirs in src
 			'!src/.*/**/*',		// no files/dirs in hidden dirs in src
 			'!src/**/*.js',		// no js files from src
+			'!src/webextension/exe/**/*',		// no exe folder
 			'src/**/3rd/*.js'	// make sure to get 3rd party js files though
         ])
         .pipe(gulp.dest('dist'));
 });
 
-gulp.task('import-3rdjs', ['copy'], function() {
+gulp.task('copy-zip-exe', function() {
+	var dest;
+	var srcwebext;
+	switch (options.txtype) {
+		case 'fxhyb':
+			dest = 'dist/webextension/exe';
+			srcwebext = 'src/webextension';
+			break;
+		default:
+			dest = 'dist/exe';
+			srcwebext = 'src';
+	}
+
+	var addonname = JSON.parse(fs.readFileSync(srcwebext + '/_locales/en-US/messages.json', 'utf8')).addon_name.message;
+	return gulp_src_ordered([
+			'../' + addonname + 'Exe/**/*',
+			'!../' + addonname + 'Exe/**/*.*',
+			'../' + addonname + 'Exe/**/*.exe'
+        ])
+		.pipe(rename(function(file) {
+			file.dirname = file.dirname.split(path.sep)[0];
+		}))
+		.pipe(gulp.dest(dest));
+		// if not fxhyb then replaces executables with zipped version
+});
+
+gulp.task('import-3rdjs', ['copy-zip-exe', 'copy'], function() {
 	// bring in babel-polyfill to 3rd party directory - determined by clarg txtype
 
 	var dest;

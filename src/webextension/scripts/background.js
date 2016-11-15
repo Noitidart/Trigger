@@ -2,7 +2,7 @@ var nub = {
 	self: {
 		id: chrome.runtime.id,
 		version: chrome.runtime.getManifest().version,
-		chromemanifestkey: 'trigger'
+		chromemanifestkey: 'trigger' // crossfile-link37388
 	},
 	browser: {
 		name: getBrowser().name.toLowerCase(),
@@ -10,24 +10,27 @@ var nub = {
 	},
 	path: {
 		// webext relative paths
+		webext: '/',
 		images: 'images/',
 		fonts: 'styles/fonts/',
 		pages: 'pages/',
 		scripts: 'scripts/',
 		styles: 'styles/',
 		exe: 'exe/',
-		// non-webext paths - SPECIAL prefixed with underscore - means it is from chrome://nub.addon.id/content/
-		_webextension: 'webextension/',
 		// chrome path versions set after this block
-		chrome: {}
+		chrome: {
+			// non-webext paths - SPECIAL prefixed with underscore - means it is from chrome://nub.addon.id/content/
+			// all the relatives from above will come in here as well, prefixed with chrome://nub.addon.id/content/
+			// only: 'only', // will me prefixed with chrome://nub.addon.id/content/
+		}
 	},
-	nativemessaging: { // only used by firefox
-		manifest_json: {
-		  name: 'trigger', // i use this as child entry for windows registry entry, so make sure this name is compatible with injection into windows registry link39191
-		  description: 'Platform helper for Trigger',
-		  path: undefined, // set by `getNativeMessagingInfo` in bootstrap
-		  type: 'stdio',
-		  allowed_extensions: [ chrome.runtime.id ]
+	namsg: { // only used by firefox
+		manifest: {
+			name: 'trigger', // this is also the exe filename // i use this as child entry for windows registry entry, so make sure this name is compatible with injection into windows registry link39191
+			description: 'Platform helper for Trigger',
+			path: undefined, // set by `getNativeMessagingInfo` in bootstrap
+			type: 'stdio',
+			allowed_extensions: [ chrome.runtime.id ]
 		}
 	},
 	stg: {
@@ -39,21 +42,7 @@ var nub = {
 		mem_lastversion: '-1', // indicates not installed - the "last installed version"
 	}
 };
-
-// set chrome:// paths in nub.path
-for (var pathkey in nub.path) {
-	if (pathkey == 'chrome') continue;
-	var prefix = 'chrome://' + nub.self.chromemanifestkey + '/content/';
-	var suffix;
-	if (pathkey[0] == '_') pathkey = pathkey.substr(1);
-	if (nub.path['_' + pathkey]) {
-		// its a chrome path only
-		suffix = nub.path['_' + pathkey];
-	} else {
-		suffix = 'webextension/' + nub.path[pathkey];
-	}
-	nub.path.chrome[pathkey] = prefix + suffix;
-}
+formatNubPaths();
 
 var gExeComm;
 var gPortsComm = new Comm.server.webextports();
@@ -114,12 +103,12 @@ function preinit(aIsRetry) {
 
 		var startNativeHost = function(aIsRetry) {
 			if (nub.platform.os == 'android') {
-				callInBootstrap('startupMainworker', { path:'chrome://profilist/content/webextension/scripts/mainworker.js' });
+				callInBootstrap('startupMainworker', { path:nub.path.chrome.scripts + 'mainworker.js' });
 				// worker doesnt start till first call, so just assume it connected
 				verifyNativeHost();
 			} else {
 				gExeComm = new Comm.server.webextexe(
-					'profilist',
+					'trigger',
 					function() {
 						// exe connected
 						verifyNativeHost();
@@ -132,8 +121,8 @@ function preinit(aIsRetry) {
 						if (!aIsRetry) {
 							// try reinstalling
 							if (nub.browser.name == 'firefox') {
-									callInBootstrap('installNativeMessaging', { nativemessaging:nub.nativemessaging, path:nub.path }, function(aInstallFailed) {
-										if (!aInstallFailed) startNativeHost(true);
+									callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, function(aInstallFailed) {
+										if (!aInstallFailed) startNativeHost(true); // try restarting native host as exe was succesfully updated
 										else verifyNativeHost({ reason:'EXE_CONNECT', text:aErr + '\n\n' + aInstallFailed });
 									});
 							} else {
@@ -158,12 +147,19 @@ function preinit(aIsRetry) {
 					resolve('ok platinfo got AND nativehost (mainworker) started up');
 				} else {
 					callInExe('getExeVersion', undefined, function(exeversion) {
-						var extversion = nub.self.version;
+						let extversion = nub.self.version;
 						if (exeversion === extversion) {
 							resolve('ok platinfo got AND exe started up AND exe version matches extension version');
 						} else {
-							// TODO: xhr exe and send it to exe to self update
-							reject({ reason:'EXE_MISMATCH', data:{ exeversion:exeversion } });
+							// version mismatch, lets fetch the exe and send it to the current version so it can apply this
+
+							callInExe('applyExe', xhrSync(getNamsgExepkgPath()).response, aApplyFailed => {
+								if (!aApplyFailed) {
+									resolve('ok platinfo got AND exe started up AND exe version matches extension version');
+								} else {
+									reject({ reason:'EXE_MISMATCH', data:{ exeversion:exeversion } });
+								}
+							})
 						}
 					});
 				}
@@ -280,7 +276,7 @@ function startupBrowserAction() {
 }
 function onBrowserActionClicked() {
 	console.log('opening menu.html now');
-	addTab(chrome.runtime.getURL(nub.path.pages + 'app.html'));
+	addTab(nub.path.pages + 'app.html');
 }
 // end - browseraction
 
@@ -533,5 +529,43 @@ class PromiseBasket {
 		results.forEach((r, i)=>this.thens[i] ? this.thens[i](r) : null);
 		return results;
 	}
+}
+
+function formatNubPaths() {
+
+	// make relative paths, non-relative
+	// and push to nub.path.chrome
+	for (var relkey in nub.path) {
+		if (relkey == 'chrome') continue;
+		nub.path.chrome[relkey] = 'webextension/' + nub.path[relkey];
+		nub.path[relkey] = chrome.runtime.getURL(nub.path[relkey]);
+	}
+
+	// prefix chrome paths
+	for (var chromekey in nub.path.chrome) {
+		nub.path.chrome[chromekey] = 'chrome://' + nub.self.chromemanifestkey + '/content/' + nub.path.chrome[chromekey];
+	}
+}
+
+function xhrSync(url, opt={}) {
+	const optdefault = {
+		responseType: 'text',
+		method: 'GET'
+	};
+	opt = Object.assign(optdefault, opt);
+
+	if (opt.url) url = url;
+
+	let xhreq = new XMLHttpRequest();
+	xhreq.open(opt.method, url, false);
+	xhreq.responseType = opt.responseType;
+	xhreq.send();
+}
+
+function getNamsgExepkgPath() {
+	let exe_subdir = ['win', 'mac'].includes(nub.platform.os) ? nub.platform.os : 'nix';
+	let exe_filename = nub.namsg.manifest.name + (nub.platform.os == 'win' ? '.exe' : '');
+	let exe_pkgpath = nub.path.exe + exe_subdir + '/' + exe_filename; // path to the exe inside the xpi
+	return exe_pkgpath;
 }
 // end - cmn

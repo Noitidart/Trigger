@@ -1,7 +1,14 @@
+console.error('at top');
+
 // Imports
 const {classes: Cc, interfaces: Ci, manager: Cm, results: Cr, utils: Cu, Constructor: CC} = Components;
 Cu.import('resource://gre/modules/osfile.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
+console.error('ok should have imported services');
+
+const SELFID = '@trigger';
+const CHROMEMANIFESTKEY = 'trigger'; // crossfile-link37388
+const WEBEXT_OS = OS.Constants.Sys.Name.toLowerCase().startsWith('win') ? 'win' : (OS.Constants.Sys.Name.toLowerCase() == 'darwin' ? 'mac' : (OS.Constants.Sys.Name.toLowerCase())); // it can give more then "openbsd"/"linux" though // https://developer.mozilla.org/en-US/Add-ons/WebExtensions/API/runtime/PlatformOs
 
 // Globals
 var gAndroidMenus = [];
@@ -14,7 +21,7 @@ var callInMainworker;
 
 function install() {}
 function uninstall(aData, aReason) {
-    if (OS.Constants.Sys.Name != 'Android' && aReason == ADDON_UNINSTALL) {
+    if (WEBEXT_OS != 'android' && aReason == ADDON_UNINSTALL) {
 		// uninstallNativeMessaging() // if it wasnt installed, then this will do nothing
 		// .then(valarr => { console.log('uninstalled:', valarr); cleanupNativeMessaging(); })
 		// .catch(err => console.error('uninstall error:', err));
@@ -22,9 +29,9 @@ function uninstall(aData, aReason) {
 }
 
 function startup(aData, aReason) {
-
-	Services.scriptloader.loadSubScript('chrome://trigger/content/webextension/scripts/3rd/polyfill.min.js');
-	Services.scriptloader.loadSubScript('chrome://trigger/content/webextension/scripts/3rd/comm/webext.js');
+	console.error('Services in startup:', Services);
+	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/polyfill.min.js');
+	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/comm/webext.js');
 
 	var promiseallarr = [];
 
@@ -54,18 +61,22 @@ function startupMainworker(aArg) {
 
 	// its lazy started, meaning it wont actually start till first call
 }
+async function onMainworkerBeforeShutdown() {
+	let basketmain = new PromiseBasket;
 
-function onMainworkerBeforeShutdown() {
-	return new Promise(resolve => callInMainworker('onBeforeTerminate', undefined, aArg => resolve()) );
+	basketmain.add(
+		new Promise( resolve => callInMainworker('onBeforeTerminate', undefined, aArg => resolve()) )
+	);
+
+	await basketmain.run();
 }
-
 // end - mainworker stuff
 
 // start - android stuff
 var gBrowserAction; // object; keys[title, iconpath]
 var gStartedupAndroid = false;
 function startupAndroid(aArg) {
-	if (OS.Constants.Sys.Name != 'Android') return;
+	if (WEBEXT_OS != 'android') return;
 
 	gStartedupAndroid = true;
 	if (aArg.browseraction) gBrowserAction = Object.assign(aArg.browseraction, {callback:onBrowserActionClicked});
@@ -74,7 +85,7 @@ function startupAndroid(aArg) {
 
 function shutdownAndroid() {
 
-	if (OS.Constants.Sys.Name != 'Android') return;
+	if (WEBEXT_OS != 'android') return;
 	if (!gStartedupAndroid) return;
 
 	// Remove inserted menu entry
@@ -103,7 +114,7 @@ function browserActionUpdate(aArg) {
 		// visible - boolean
 		// checkable - boolean
 
-	if (OS.Constants.Sys.Name == 'Android') {
+	if (WEBEXT_OS == 'android') {
 		Object.assign(gBrowserAction, updateobj);
 
 		var l = gAndroidMenus.length;
@@ -169,7 +180,7 @@ var windowListenerAndroid = {
 		if (!aDOMWindow) { return }
 
             // desktop_android:insert_gui
-			if (OS.Constants.Sys.Name == 'Android') {
+			if (WEBEXT_OS == 'android') {
                 // // android:insert_gui
 				if (aDOMWindow.NativeWindow && aDOMWindow.NativeWindow.menu) {
 					var menuid = aDOMWindow.NativeWindow.menu.add(gBrowserAction);
@@ -186,7 +197,7 @@ var windowListenerAndroid = {
 	},
 	windowClosed: function(aDOMWindow) {
 		// Remove from gAndroidMenus the entry for this aDOMWindow
-		if (OS.Constants.Sys.Name == 'Android') {
+		if (WEBEXT_OS == 'android') {
 			var l = gAndroidMenus.length;
 			for (var i=0; i<l; i++) {
 				var androidmenu = gAndroidMenus[i];
@@ -201,174 +212,119 @@ var windowListenerAndroid = {
 // end - android stuff
 
 // start - native messaging stuff
-function getNativeMessagingInfo() {
-	// returns { os_sname, exe_path, exe_from, exe_name, exemanifest_path, exemanifest_from, exemanifest_json, winregistry_path }
-	// `winregistry_path` is undefined if not windows
-	// os_sname is win/mac/nix
+function getNativeMessagingSystemPaths(aArg) {
+	let { manifest_name, manifest, os } = aArg;
 
-	// nub.nativemessaging.manifest_json = { // this is setup in background.js
-	//   'name': 'profilist', // i use this as child entry for windows registry entry, so make sure this name is compatible with injection into windows registry link39191
-	//   'description': 'Platform helper for Profilist',
-	//   'path': undefined, // set below to `exe_path`,
-	//   'type': 'stdio',
-	//   'allowed_extensions': [ nub.self.id ]
-	// };
+	// either `manifest_name` OR `manifest` with `name` key filled must be provided
+	// when `uninstallNativeMessaging` it passes `manifest_name`
+	// when `installNativeMessaging` it passes `manifest`
 
-	var exe_name;
-	var sname = OS.Constants.Sys.Name.toLowerCase(); // stands for "simplified name". different from `mname`
-	if (sname.startsWith('win')) {
-		sname = 'win';
-		exe_name = nub.nativemessaging.manifest_json.name + '.exe';
-	} else if (sname == 'darwin') {
-		sname = 'mac';
-		exe_name = nub.nativemessaging.manifest_json.name;
-	} else {
-		sname = 'nix';
-		exe_name = nub.nativemessaging.manifest_json.name;
-	}
+	manifest_name = manifest_name || manifest.name;
+	if (!manifest_name) throw new Error('must provide manifest name for getNativeMessagingSystemPaths!');
 
-	var exe_path;
-	exe_path = OS.Path.join(OS.Constants.Path.userApplicationDataDir, 'extension-exes', exe_name);
+	let exe_filename = manifest_name + (os == 'win' ? '.exe' : '');
+	let exe_fromdirpath = OS.Constants.Path.userApplicationDataDir;
+	let exe_filepath = OS.Path.join(exe_fromdirpath, 'extension-exes', exe_name); // path on filesystem
 
-	var exe_from = OS.Constants.Path.userApplicationDataDir; // dir that exists for sure in subpath of `exe_path`. where to `makeDir` from for exe
-
-	// update nub.nativemessaging.manifest_json
-	nub.nativemessaging.manifest_json.path = exe_path;
-	nub.nativemessaging.manifest_json.description += ' for ' + sname;
-
-	var exemanifest_path;
-	var exemanifest_from; // dir that exists for sure in subpath of `exemanifest_path`. where to `makeDir` from for exe
-	switch (sname) {
+	let manifest_filename = manifest_name + '.json';
+	let manifest_filepath;
+	let manifest_fromdirpath;
+	switch (os) {
 		case 'win':
-				// exemanifest_path = OS.Path.join(nub.path.storage, 'profilist.json');
-				// exemanifest_from = nub.path.profileDir;
-				exemanifest_path = OS.Path.join(OS.Constants.Path.userApplicationDataDir, 'extension-exes', 'profilist.json');
-				exemanifest_from = OS.Constants.Path.userApplicationDataDir;
+				manifest_fromdirpath = OS.Constants.Path.userApplicationDataDir;
+				manifest_filepath = OS.Path.join(manifest_fromdirpath, 'extension-exes', manifest_filename);
 			break;
 		case 'mac':
-				exemanifest_path = OS.Path.join(OS.Constants.Path.homeDir, 'Library', 'Application Support', 'Mozilla', 'NativeMessagingHosts', 'profilist.json');
-				exemanifest_from = OS.Path.join(OS.Constants.Path.homeDir, 'Library', 'Application Support');
+				manifest_fromdirpath = OS.Path.join(OS.Constants.Path.homeDir, 'Library', 'Application Support');
+				manifest_filepath = OS.Path.join(manifest_fromdirpath, 'Mozilla', 'NativeMessagingHosts', manifest_filename);
 			break;
-		case 'nix':
-				exemanifest_path = OS.Path.join(OS.Constants.Path.homeDir, '.mozilla', 'native-messaging-hosts', 'profilist.json');
-				exemanifest_from = OS.Constants.Path.homeDir;
-			break;
+		default:
+			// linux
+			// openbsd
+			manifest_fromdirpath = OS.Constants.Path.homeDir;
+			manifest_filepath = OS.Path.join(manifest_fromdirpath, '.mozilla', 'native-messaging-hosts', manifest_filename);
 	}
 
-	var winregistry_path;
-	if (sname == 'win') {
-		winregistry_path = 'SOFTWARE\\Mozilla\\NativeMessagingHosts';
-	}
+	let manifest_winregpath = (os != 'win' ? undefined : 'SOFTWARE\\Mozilla\\NativeMessagingHosts'); // windows registry path
 
-	return { os_sname:sname, exe_path, exe_from, exe_name, exemanifest_path, exemanifest_from, exemanifest_json:nub.nativemessaging.manifest_json, winregistry_path };
+	return {
+		exe_fromdirpath,
+		exe_filepath,
 
+		manifest_filepath,
+		manifest_fromdirpath,
+
+		manifest_winregpath
+	};
 }
 
-function installNativeMessaging(aArg) {
-	// it should already be there due to `sendNub`, but just to make it not reliant on globals
-	nub.nativemessaging = aArg.nativemessaging;
-	nub.path = aArg.path;
+async function installNativeMessaging(aArg) {
+	let { exe_pkgpath, manifest, os } = aArg;
 
-	Services.prefs.setCharPref('extensions.@profilist.namsg', nub.nativemessaging.manifest_json.name);
+	let sys = getNativeMessagingSystemPaths(aArg);
+	manifest.path = sys.exe_filepath;
 
-	var { exe_path, exe_from, exe_name, exemanifest_path, exemanifest_from, exemanifest_json, winregistry_path, os_sname } = getNativeMessagingInfo();
-
-	var promiseallarrmain = [];
+	Services.prefs.setCharPref('extensions.' + SELFID + '.namsg', manifest.name);
 
 	// copy the exes
-	promiseallarrmain.push(new Promise( (resolve, reject) =>
-		OS.File.makeDir(OS.Path.dirname(exe_path), { from:exe_from })
-		.then( dirmade => {
-			var xhr = Cc['@mozilla.org/xmlextras/xmlhttprequest;1'].createInstance(Ci.nsIXMLHttpRequest);
-			console.log(nub.path.chrome.exe + os_sname + '/' + exe_name);
-			xhr.open('GET', nub.path.chrome.exe + os_sname + '/' + exe_name, false);
-			xhr.responseType = 'arraybuffer';
-			xhr.send();
+	await writeThenDirMT(sys.exe_filepath, exe_uint8, sys.exe_fromdirpath, { encoding:undefined });
+	if (os != 'win') await OS.File.setPermissions(sys.exe_filepath, { unixMode:0o4777 });
 
-			// i dont use `writeThenDirMT` because ArrayBuffer's get neutred, so if first write fails, then the arrbuf is gone I think. it might not neuter on fail though.
-				// i actually i tested it on 092816 in "52.0a1 (2016-09-28) (64-bit)", and on fail, it does not neuter the arrbuf, only on success
-			writeThenDirMT(exe_path, new Uint8Array(xhr.response), exe_from, { encoding:undefined })
-			// OS.File.writeAtomic(exe_path, new Uint8Array(xhr.response), { encoding:undefined })
-			.then( copied => {
-				if (os_sname != 'win') {
-					OS.File.setPermissions(exe_path, { unixMode:0o4777 }) // makes it executable, tested on mac, not yet on nix
-					.then( resolve() )
-					.catch( osfileerr => reject(osfileerr) )
-				} else {
-					resolve();
-				}
-			})
-			.catch( osfileerr => reject(osfileerr) )
-		})
-		.catch( osfileerr => reject(osfileerr) )
-	));
+	// copy the manifest
+	await writeThenDirMT(sys.manifest_filepath, JSON.stringify(manifest), manifest_fromdirpath, { noOverwrite:false, encoding:'utf-8' });
 
-	// make sure exe manifest is in place
-	console.log('json stringify:', JSON.stringify(exemanifest_json));
-	promiseallarrmain.push(new Promise( (resolve, reject) =>
-		writeThenDirMT(exemanifest_path, JSON.stringify(exemanifest_json), exemanifest_from, { noOverwrite:true, encoding:'utf-8' })
-		.then( ok => resolve() )
-		.catch( osfileerr => osfileerr.becauseExists ? resolve() : reject(osfileerr) )
-	));
-
-	// if Windows then update registry
-	if (winregistry_path) {
-		var wrk = Cc['@mozilla.org/windows-registry-key;1'].createInstance(Ci.nsIWindowsRegKey);
-		wrk.create(wrk.ROOT_KEY_CURRENT_USER, winregistry_path + '\\' + exemanifest_json.name, wrk.ACCESS_WRITE); // link39191
-		wrk.writeStringValue('', exemanifest_path);
-		wrk.close();
-		// not ignoring errors during write, if it errors, startup fails
+	// update registry
+	if (os == 'win') {
+		let wrk = Cc['@mozilla.org/windows-registry-key;1'].createInstance(Ci.nsIWindowsRegKey);
+		try {
+			wrk.create(wrk.ROOT_KEY_CURRENT_USER, sys.manifest_winregpath + '\\' + manifest.name, wrk.ACCESS_WRITE); // link39191
+			wrk.writeStringValue('', manifest_filepath);
+		} finally {
+			wrk.close();
+		}
 	}
-
-	return new Promise( (resolve, reject) => {
-		Promise.all(promiseallarrmain)
-		.then(resolve())
-		.catch(err => reject(err))
-	});
 }
 
-function uninstallNativeMessaging() {
+async function uninstallNativeMessaging() {
 	// if installed then pref is set
-	var exemanifest_name;
+	let manifest_name;
 	try {
-		exemanifest_name = Services.prefs.getCharPref('extensions.@profilist.namsg');
+		manifest_name = Services.prefs.getCharPref('extensions.' + SELFID + '.namsg');
 	} catch(ex) {
-		return Promise.reject('not installed');
+		throw new Error('native messaging was never installed');
 	}
 
-	Services.prefs.clearUserPref('extensions.@profilist.namsg');
-	nub.nativemessaging = { manifest_json:{name:exemanifest_name} };
+	let os = WEBEXT_OS;
 
-	var { exe_path, exe_from, exe_name, exemanifest_path, exemanifest_from, exemanifest_json, winregistry_path } = getNativeMessagingInfo();
-
-	var promiseallarrmain = [];
+	let sys = getNativeMessagingSystemPaths({os, manifest_name})
 
 	// delete exe
-	promiseallarrmain.push( OS.File.remove(exe_path, { ignorePermissions:true, ignoreAbsent:true }) ); // ignoreAbsent because maybe another profile already deleted it
-
-	// TODO: if `exe_path` parent dir is empty, remove it, because parent dir is my own created one of "extensions-exes"
+	await OS.File.remove(sys.exe_filepath, { ignorePermissions:true, ignoreAbsent:true }); // ignoreAbsent because maybe another profile already deleted it
 
 	// delete manifest
-	promiseallarrmain.push( OS.File.remove(exemanifest_path, { ignorePermissions:true, ignoreAbsent:true }) ); // ignoreAbsent for the hell of it
+	await OS.File.remove(exemanifest_path, { ignorePermissions:true, ignoreAbsent:true }) // ignoreAbsent for the hell of it
 
 	// if Windows then update registry
-	if (winregistry_path) {
-		var wrk = Cc['@mozilla.org/windows-registry-key;1'].createInstance(Ci.nsIWindowsRegKey);
+	if (os == 'win') {
+		let wrk = Cc['@mozilla.org/windows-registry-key;1'].createInstance(Ci.nsIWindowsRegKey);
 		try {
-			wrk.open(wrk.ROOT_KEY_CURRENT_USER, winregistry_path, wrk.ACCESS_WRITE);
-			wrk.removeChild(exemanifest_json.name); // link39191
+			wrk.open(wrk.ROOT_KEY_CURRENT_USER, sys.manifest_winregpath, wrk.ACCESS_WRITE);
+			wrk.removeChild(manifest_name); // link39191
 		} finally {
 			wrk.close();
 		}
 		// NOTE: i am ignoring errors that happen during uninstall from registry
 	}
 
-	return Promise.all(promiseallarrmain);
-}
+	// succesfully uninstalled, so remove from pref
+	Services.prefs.clearUserPref('extensions.' + SELFID + '.namsg');
 
-function cleanupNativeMessaging() {
-	// delete the exe parent dir, if it is empty. because this parent dir is only used by my addons
-	OS.File.removeEmptyDir(OS.Path.join(OS.Constants.Path.userApplicationDataDir, 'extension-exes'), { ignoreAbsent:true }).catch( err=>console.warn('This is totally acceptable, it means there is stuff left so should NOT cleanup. err:', err) );
+	// if `exe_path` parent dir is empty, remove it, because parent dir is my own created one of "extensions-exes"
+	try {
+		await OS.File.removeEmptyDir(OS.Path.dirname(sys.exe_filepath));
+	} catch(ex) {
+		console.warn('ok so the dir is not empty')
+	}
 }
 
 // start - addon functions
@@ -377,26 +333,23 @@ function showSystemAlert(aArg) {
 
 	Services.prompt.alert(Services.wm.getMostRecentWindow('navigator:browser'), title, body);
 }
-function sendNub(aArg, aReportProgress, aComm) {
-	nub = aArg.nub;
-}
+
 function setApplyBackgroundUpdates(aNewApplyBackgroundUpdates) {
 	// 0 - off, 1 - respect global setting, 2 - on
-	AddonManager.getAddonByID(nub.self.id, addon =>
+	AddonManager.getAddonByID(SELFID, addon =>
 		addon.applyBackgroundUpdates = aNewApplyBackgroundUpdates
 	);
 }
 
-function getAddonInfo(aAddonId=nub.self.id) {
-	var deferredmain_getaddoninfo = new Deferred();
-	AddonManager.getAddonByID(aAddonId, addon =>
-		deferredmain_getaddoninfo.resolve({
-			applyBackgroundUpdates: parseInt(addon.applyBackgroundUpdates) === 1 ? (AddonManager.autoUpdateDefault ? 2 : 0) : parseInt(addon.applyBackgroundUpdates),
-			updateDate: addon.updateDate.getTime()
-		})
+async function getAddonInfo(aAddonId=SELFID) {
+	return await new Promise(resolve =>
+		AddonManager.getAddonByID(aAddonId, addon =>
+			resolve({
+				applyBackgroundUpdates: parseInt(addon.applyBackgroundUpdates) === 1 ? (AddonManager.autoUpdateDefault ? 2 : 0) : parseInt(addon.applyBackgroundUpdates),
+				updateDate: addon.updateDate.getTime()
+			})
+		)
 	);
-
-	return deferredmain_getaddoninfo.promise;
 }
 
 function getXPrefs(aArgs) {
@@ -477,35 +430,71 @@ function getNativeHandlePtrStr(aDOMWindow) {
 								   .getInterface(Ci.nsIBaseWindow);
 	return aDOMBaseWindow.nativeHandle;
 }
-// rev2 - https://gist.github.com/Noitidart/5257376b54935556173e8d13c2821f4e
-function writeThenDirMT(aPlatPath, aContents, aDirFrom, options={}) {
+
+// TODO: not yet comitted - rev3 - https://gist.github.com/Noitidart/5257376b54935556173e8d13c2821f4e
+async function writeThenDirMT(path, contents, from, opt={}) {
+	// path - platform path of file to write
+	// from - platform path of dir to make from
+	// contents -
+	// opt - see `optd`
+
 	// tries to writeAtomic
 	// if it fails due to dirs not existing, it creates the dir
 	// then writes again
 	// if fail again for whatever reason it rejects with `osfileerr`
-	// on success resolves with `true`
+	// on success resolves with `undefined`
 
-	var default_options = {
+	let optd = {
 		encoding: 'utf-8',
 		noOverwrite: false
-		// tmpPath: aPlatPath + '.tmp'
+		// tmpPath: path + '.tmp'
 	};
 
-	options = Object.assign(default_options, options);
+	opt = Object.assign(optd, opt);
 
-	var writeTarget = () => OS.File.writeAtomic(aPlatPath, aContents, options);
+	let writeTarget = () => OS.File.writeAtomic(path, contents, opt);
 
-	return new Promise((resolvemain, rejectmain) =>
-		writeTarget().then( ()=>resolvemain() ).catch( osfileerr => {
-			if (osfileerr.becauseNoSuchFile) { // this happens when directories dont exist to it
-				OS.File.makeDir(OS.Path.dirname(aPlatPath), {from:aDirFrom}).then(
-					()=>writeTarget().then( ()=>resolvemain() ).catch( osfileerr=>rejectmain(osfileerr) )
-				// ).catch( osfileerr=>resolvemain(false) );
-				).catch( osfileerr=>rejectmain(osfileerr) );
-			} else {
-				rejectmain(osfileerr);
-				// resolvemain(false);
-			}
-		})
-	);
+	try {
+		await writeTarget();
+	} catch(osfileerr) {
+		if (osfileerr.becauseNoSuchFile) { // this happens when directories dont exist to it
+			// TODO: verify this again: // im pretty sure i tested, if contents was a Uint8Array it will not be netuered. it is only neutered on success.
+			await OS.File.makeDir(OS.Path.dirname(path), {from}); // can throw
+			await writeTarget(); // can throw
+		} else {
+			throw osfileerr;
+		}
+	}
+}
+
+function xhrSync(url, opt={}) {
+	const optdefault = {
+		responseType: 'text',
+		method: 'GET'
+	};
+	opt = Object.assign(optdefault, opt);
+
+	if (opt.url) url = url;
+
+	let xhreq = Cc['@mozilla.org/xmlextras/xmlhttprequest;1'].createInstance(Ci.nsIXMLHttpRequest);
+	xhreq.open(opt.method, url, false);
+	xhreq.responseType = opt.responseType;
+	xhreq.send();
+}
+
+class PromiseBasket {
+	constructor() {
+		this.promises = [];
+		this.thens = [];
+	}
+	add(aAsync, onThen) {
+		// onThen is optional
+		this.promises.push(aAsync);
+		this.thens.push(onThen);
+	}
+	async run() {
+		let results = await Promise.all(this.promises);
+		results.forEach((r, i)=>this.thens[i] ? this.thens[i](r) : null);
+		return results;
+	}
 }
