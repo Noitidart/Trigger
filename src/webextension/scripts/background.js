@@ -55,12 +55,9 @@ var callInMainworker = Comm.callInX2.bind(null, gBsComm, 'callInMainworker', nul
 var callInNative; // set in preinit, if its android, it is eqaul to callInMainworker, else it is equal to callInExe
 
 // start - init
-preinit();
+async function preinit() {
+	let basketmain = new PromiseBasket;
 
-// never retries - only one special case of retry is after auto install native messaging
-function preinit(aIsRetry) {
-
-	var promiseallarr = [];
 	/*
 	 promises in promiseallarr when get rejected, reject with:
 		{
@@ -70,113 +67,102 @@ function preinit(aIsRetry) {
 		}
 	*/
 	// fetch storage
-	promiseallarr.push(new Promise(function(resolve, reject) {
-		storageCall('local', 'get', Object.keys(nub.stg))
-		.then(function(stgeds) {
-			for (var key in stgeds) {
-				nub.stg[key] = stgeds[key];
+	basketmain.add(
+		async function() {
+			try {
+				let stgeds = await storageCall('local', 'get', Object.keys(nub.stg));
+				for (let key in stgeds) {
+					nub.stg[key] = stgeds[key];
+				}
+			} catch(err) {
+				throw { reason:'STG_CONNECT', text:err.toString() };
 			}
-			resolve();
-		})
-		.catch(function(err) {
-			reject(err);
-		});
-	}));
+		}()
+	);
 
 	// get platform info - and startup exe (desktop) or mainworker (android)
 	// set callInNative
-	promiseallarr.push(new Promise(function(resolve, reject) {
-		// start async-proc133934
-		var getPlat = function() {
-			chrome.runtime.getPlatformInfo(gotPlat);
-		};
+	basketmain.add(
+		async function() {
+			// get platform info
+			nub.platform = await browser.runtime.getPlatformInfo();
 
-		var gotPlat = function(platinfo) {
-			console.log('platinfo:', platinfo);
-			nub.platform = platinfo;
-
+			// set callInNative
 			callInNative = nub.platform.os == 'android' ? callInMainworker : callInExe;
 
-			// resolve('ok platinfo got')
-			startNativeHost();
-		};
-
-		var startNativeHost = function(aIsRetry) {
+			// connect to native
 			if (nub.platform.os == 'android') {
 				callInBootstrap('startupMainworker', { path:nub.path.chrome.scripts + 'mainworker.js' });
 				// worker doesnt start till first call, so just assume it connected
-				verifyNativeHost();
-			} else {
-				gExeComm = new Comm.server.webextexe(
-					'trigger',
-					function() {
-						// exe connected
-						verifyNativeHost();
-					},
-					function(aErr) {
-						// exe failed to connect
-						console.error('failed to connect to exe, aErr:', aErr);
-						if (aErr) aErr = aErr.toString(); // because at the time of me writing this, Comm::webext.js does not give an error reason fail, i tried but i couldnt get the error reason, it is only logged to console
 
-						if (!aIsRetry) {
-							// try reinstalling
-							if (nub.browser.name == 'firefox') {
-									callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, function(aInstallFailed) {
-										if (!aInstallFailed) startNativeHost(true); // try restarting native host as exe was succesfully updated
-										else verifyNativeHost({ reason:'EXE_CONNECT', text:aErr + '\n\n' + aInstallFailed });
-									});
-							} else {
-								// TODO: present dialog which will download the installer zip from within the addon, with a "RETRY" button so they can click after installing
-							}
-						} else {
-							verifyNativeHost({ reason:'EXE_CONNECT', text:aErr });
+				// no need to verify host version, as its the one from the chromeworker
+				return 'platinfo got, callInNative set, worker started';
+			} else {
+				try {
+					await new Promise((resolve, reject) => {
+						gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
+					});
+				} catch(first_conn_err) {
+					// exe failed to connect
+					console.error('failed to connect to exe, first_conn_err:', first_conn_err);
+					if (first_conn_err) first_conn_err = first_conn_err.toString(); // because at the time of me writing this, Comm::webext.js does not give an error reason fail, i tried but i couldnt get the error reason, it is only logged to console
+
+					if (nub.browser.name == 'firefox') {
+						// manifest and exe may not be installed, so try installing
+						try {
+							await new Promise((resolve, reject) => {
+								callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, err => err ? reject(err) : resolve() );
+							})
+						} catch(install_err) {
+							throw { reason:'EXE_INSTALL', text:'Failed to connect for reason "' + first_conn_err.toString() + '" so tried copying manifest and executable but failed due to "' + install_err + '".' };
 						}
 					}
-				);
-			}
-		};
 
-		var verifyNativeHost = function(aRejectObj) {
-			// last step of async-proc - responsible for calling `resolve` or `reject`
-			console.log('in verifyNativeHost');
-			if (aRejectObj) {
-				reject(aRejectObj);
-			} else {
-				// verifies the native host version matches that of the extension
-				if (nub.platform.os == 'android') {
-					resolve('ok platinfo got AND nativehost (mainworker) started up');
-				} else {
-					callInExe('getExeVersion', undefined, function(exeversion) {
-						let extversion = nub.self.version;
-						if (exeversion === extversion) {
-							resolve('ok platinfo got AND exe started up AND exe version matches extension version');
-						} else {
-							// version mismatch, lets fetch the exe and send it to the current version so it can apply this
-
-							callInExe('applyExe', xhrSync(getNamsgExepkgPath()).response, aApplyFailed => {
-								if (!aApplyFailed) {
-									resolve('ok platinfo got AND exe started up AND exe version matches extension version');
-								} else {
-									reject({ reason:'EXE_MISMATCH', data:{ exeversion:exeversion } });
-								}
+					// try re-connecting
+					try {
+						// try reconnecting 10 times over 5000ms
+						await doRetries(500, 10, () =>
+							new Promise((resolve, reject) => {
+								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err));
 							})
-						}
-					});
+						);
+					} catch(re_conn_err) {
+						throw { reason:'EXE_CONNECT', text:re_conn_err };
+					}
+				}
+
+				// ok connected
+				// lets verify the exe is for this version of extension, else send it exe from within for self update/downgrade
+				// btw if it gets here, its not android, as if it was android it `return`ed earlier after starting worker
+
+				// verify exe version
+				let exeversion = await new Promise( resolve => callInExe('getExeVersion', undefined, val => resolve(val)) );
+				let extversion = nub.self.version;
+				if (exeversion === extversion) {
+					return 'platinfo got, callInNative set, exe started, exe version is correct';
+				} else {
+					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
+					let exearrbuf = xhrSync(getNamsgExepkgPath()).response;
+
+					try {
+						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exearrbuf, err=>err?reject(err):resolve() )  );
+					} catch(exe_apply_err) {
+						console.error('exe_apply_err:', exe_apply_err);
+						let howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
+						throw { reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exeversion, extversion, howtofixstr]) };
+					}
+
+					return 'platinfo got, callInNative set, exe started, exe self applied';
 				}
 			}
-		};
+		}()
+	);
 
-		getPlat();
-		// end async-proc133934
-	}));
+	try {
+		await basketmain.run();
 
-	Promise.all(promiseallarr)
-	.then(function(valarr) {
-		console.log('valarr:', valarr);
-		// ok `preinit` completed successfully
 		init();
-	})
-	.catch(function onPreinitFailed(err) {
+	} catch(err) {
 		console.error('onPreinitFailed, err:', err);
 
 		// build body, based on err.reason, with localized template and with err.text and errex
@@ -191,23 +177,11 @@ function preinit(aIsRetry) {
 			// 		if (errex) bodyarr[0] += ' ' + errex.toString();
 			//
 			// 	break;
-			// case 'EXE_MISMATCH':
-			//
-			// 		// build howtofixstr
-			// 		var extversion = nub.self.version;
-			// 		var exeversion = err.data.exeversion;
-			// 		console.log('going to isSemVer', extversion, exeversion);
-			// 		console.log('semver:', isSemVer(extversion, '>' + exeversion));
-			// 		var howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
-			// 		bodyarr = [ chrome.i18n.getMessage('startupfailed_exemismatch', [exeversion, extversion, howtofixstr]) ];
-			// 		if (errex) bodyarr[0] += ' ' + errex.toString();
-			//
-			// 	break;
 			default:
 				var txt = '';
-				if (err && err.text) txt += err.text;
-				if (txt && errex) txt += '\n';
-				if (errex) txt += errex;
+				if (err.text) txt += err.text;
+				// if (txt && errex) txt += '\n';
+				// if (errex) txt += errex;
 
 				bodyarr = [ txt || chrome.i18n.getMessage('startupfailed_unknown') ];
 		}
@@ -215,7 +189,7 @@ function preinit(aIsRetry) {
 
 		// show error to user
 		callInBootstrap('showSystemAlert', { title:chrome.i18n.getMessage('startupfailed_title'), body:body });
-	});
+	}
 }
 
 function init() {
@@ -243,12 +217,6 @@ function init() {
 		.then(a=>console.log('set, nub.stg:', nub.stg));
 	} // else if (lastversion === nub.self.version) { } // browser startup OR enabled after having disabled
 
-	// ensure `mem_faking` status is refelected
-	if (nub.stg.mem_faking) {
-		setFaking(true);
-	} else {
-		setFaking(false);
-	}
 }
 
 function uninit() {
@@ -285,7 +253,7 @@ async function fetchData(aArg={}) {
 	// xprefs means xpcom prefs
 
 	let data = {};
-
+	console.log('PromiseBasket:', PromiseBasket);
 	let basketmain = new PromiseBasket;
 
 	if (wantsnub) data.nub = nub;
@@ -374,6 +342,17 @@ function reuseElseAddTab(url) {
 	// find tab by url, if it exists focus its window and tab and the reuse it. else add tab
 }
 // end - polyfill for android
+
+// start - addon specific helpers
+
+function getNamsgExepkgPath() {
+	let exe_subdir = ['win', 'mac'].includes(nub.platform.os) ? nub.platform.os : 'nix';
+	let exe_filename = nub.namsg.manifest.name + (nub.platform.os == 'win' ? '.exe' : '');
+	let exe_pkgpath = nub.path.exe + exe_subdir + '/' + exe_filename; // path to the exe inside the xpi
+	return exe_pkgpath;
+}
+
+// end - addon specific helpers
 
 // start - cmn
 // rev3 - not yet comit - https://gist.github.com/Noitidart/bcb964207ac370d3301720f3d5c9eb2b
@@ -562,10 +541,24 @@ function xhrSync(url, opt={}) {
 	xhreq.send();
 }
 
-function getNamsgExepkgPath() {
-	let exe_subdir = ['win', 'mac'].includes(nub.platform.os) ? nub.platform.os : 'nix';
-	let exe_filename = nub.namsg.manifest.name + (nub.platform.os == 'win' ? '.exe' : '');
-	let exe_pkgpath = nub.path.exe + exe_subdir + '/' + exe_filename; // path to the exe inside the xpi
-	return exe_pkgpath;
+async function promiseTimeout(milliseconds) {
+	await new Promise(resolve => setTimeout(()=>resolve(), milliseconds))
+}
+
+async function doRetries(retry_ms, retry_cnt, callback) {
+	// callback should return promise
+	// total_time = retry_ms * retry_cnt
+	for (let i=0; i<retry_cnt; i++) {
+		try {
+			return await callback();
+			break;
+		} catch(err) {
+			console.warn('retry err:', err, 'attempt, i:', i);
+			if (i < retry_cnt) await promiseTimeout(retry_ms);
+			else throw err;
+		}
+	}
 }
 // end - cmn
+
+preinit();

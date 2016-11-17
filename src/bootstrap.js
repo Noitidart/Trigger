@@ -2,6 +2,7 @@
 const {classes: Cc, interfaces: Ci, manager: Cm, results: Cr, utils: Cu, Constructor: CC} = Components;
 Cu.import('resource://gre/modules/osfile.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
+Cu.import('resource://gre/modules/Timer.jsm'); // needed for babel-polyfill async/await stuff
 // #includetop 'babel-polyfill'
 
 const SELFID = '@trigger';
@@ -20,14 +21,13 @@ var callInMainworker;
 function install() {}
 function uninstall(aData, aReason) {
     if (WEBEXT_OS != 'android' && aReason == ADDON_UNINSTALL) {
-		// uninstallNativeMessaging() // if it wasnt installed, then this will do nothing
-		// .then(valarr => { console.log('uninstalled:', valarr); cleanupNativeMessaging(); })
-		// .catch(err => console.error('uninstall error:', err));
+		uninstallNativeMessaging() // if it wasnt installed, then this will do nothing
+		.then(valarr => console.log('uninstallNativeMessaging done:', valarr))
+		.catch(err => console.error('uninstallNativeMessaging error:', err));
 	}
 }
 
 function startup(aData, aReason) {
-	console.error('Services in startup:', Services);
 	// Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/polyfill.min.js'); // not needed because of `#includetop 'babel-polyfill'`
 	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/comm/webext.js');
 
@@ -214,7 +214,7 @@ function getNativeMessagingSystemPaths(aArg) {
 
 	let exe_filename = manifest_name + (os == 'win' ? '.exe' : '');
 	let exe_fromdirpath = OS.Constants.Path.userApplicationDataDir;
-	let exe_filepath = OS.Path.join(exe_fromdirpath, 'extension-exes', exe_name); // path on filesystem
+	let exe_filepath = OS.Path.join(exe_fromdirpath, 'extension-exes', exe_filename); // path on filesystem
 
 	let manifest_filename = manifest_name + '.json';
 	let manifest_filepath;
@@ -257,22 +257,24 @@ async function installNativeMessaging(aArg) {
 	Services.prefs.setCharPref('extensions.' + SELFID + '.namsg', manifest.name);
 
 	// copy the exes
+	var exe_uint8 = new Uint8Array(xhrSync(exe_pkgpath, { responseType:'arraybuffer' }).response);
 	await writeThenDirMT(sys.exe_filepath, exe_uint8, sys.exe_fromdirpath, { encoding:undefined });
 	if (os != 'win') await OS.File.setPermissions(sys.exe_filepath, { unixMode:0o4777 });
 
 	// copy the manifest
-	await writeThenDirMT(sys.manifest_filepath, JSON.stringify(manifest), manifest_fromdirpath, { noOverwrite:false, encoding:'utf-8' });
+	await writeThenDirMT(sys.manifest_filepath, JSON.stringify(manifest), sys.manifest_fromdirpath, { noOverwrite:false, encoding:'utf-8' });
 
 	// update registry
 	if (os == 'win') {
 		let wrk = Cc['@mozilla.org/windows-registry-key;1'].createInstance(Ci.nsIWindowsRegKey);
 		try {
 			wrk.create(wrk.ROOT_KEY_CURRENT_USER, sys.manifest_winregpath + '\\' + manifest.name, wrk.ACCESS_WRITE); // link39191
-			wrk.writeStringValue('', manifest_filepath);
+			wrk.writeStringValue('', sys.manifest_filepath);
 		} finally {
 			wrk.close();
 		}
 	}
+
 }
 
 async function uninstallNativeMessaging() {
@@ -285,14 +287,15 @@ async function uninstallNativeMessaging() {
 	}
 
 	let os = WEBEXT_OS;
-
 	let sys = getNativeMessagingSystemPaths({os, manifest_name})
 
-	// delete exe
-	await OS.File.remove(sys.exe_filepath, { ignorePermissions:true, ignoreAbsent:true }); // ignoreAbsent because maybe another profile already deleted it
-
 	// delete manifest
-	await OS.File.remove(exemanifest_path, { ignorePermissions:true, ignoreAbsent:true }) // ignoreAbsent for the hell of it
+	await OS.File.remove(sys.manifest_filepath, { ignorePermissions:true, ignoreAbsent:true }) // ignoreAbsent for the hell of it
+
+	// delete exe
+	// exe might fail to delete, if clicked "uninstall" from addon manager while addon was running, so connection to exe hasnt yet terminated, so trying to delete during this time gives access denied
+	// try deleting 20 times, over 4000ms
+	doRetries(200, 20, ()=>OS.File.remove(sys.exe_filepath, { ignorePermissions:true, ignoreAbsent:true })) // ignoreAbsent because maybe another profile already deleted it
 
 	// if Windows then update registry
 	if (os == 'win') {
@@ -318,6 +321,23 @@ async function uninstallNativeMessaging() {
 }
 
 // start - addon functions
+async function promiseTimeout(milliseconds) {
+	await new Promise(resolve => setTimeout(()=>resolve(), milliseconds))
+}
+async function doRetries(retry_ms, retry_cnt, callback) {
+	// callback should return promise
+	// total_time = retry_ms * retry_cnt
+	for (let i=0; i<retry_cnt; i++) {
+		try {
+			return await callback();
+			break;
+		} catch(err) {
+			console.warn('retry err:', err, 'attempt, i:', i);
+			if (i < retry_cnt) await promiseTimeout(retry_ms);
+			else throw err;
+		}
+	}
+}
 function showSystemAlert(aArg) {
 	var { title, body } = aArg;
 
@@ -470,6 +490,8 @@ function xhrSync(url, opt={}) {
 	xhreq.open(opt.method, url, false);
 	xhreq.responseType = opt.responseType;
 	xhreq.send();
+
+	return xhreq;
 }
 
 class PromiseBasket {

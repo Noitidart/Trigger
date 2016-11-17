@@ -21,7 +21,7 @@
 			}
 		}
 	},
-	"startupfailed_unknown": { "message": "The error is unknown. Try checking the \"Browser Console\" for more details." },
+	"startupfailed_unknown": { "message": "The error is unknown. Please see \"Browser Console\" for more details. Try restarting the extension to fix this problem." },
 
 	"browseraction_title": { "message": "Trigger Dashboard" }
 }
