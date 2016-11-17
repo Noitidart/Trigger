@@ -2,7 +2,7 @@
 const {classes: Cc, interfaces: Ci, manager: Cm, results: Cr, utils: Cu, Constructor: CC} = Components;
 Cu.import('resource://gre/modules/osfile.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
-console.error('ok should have imported services');
+// #includetop 'babel-polyfill'
 
 const SELFID = '@trigger';
 const CHROMEMANIFESTKEY = 'trigger'; // crossfile-link37388
@@ -28,7 +28,7 @@ function uninstall(aData, aReason) {
 
 function startup(aData, aReason) {
 	console.error('Services in startup:', Services);
-	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/polyfill.min.js');
+	// Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/polyfill.min.js'); // not needed because of `#includetop 'babel-polyfill'`
 	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/comm/webext.js');
 
 	gBgComm = new Comm.server.webext(aData.webExtension); // starts up the webext

@@ -57,20 +57,7 @@ gulp.task('clean', function() {
 		.pipe(clean());
 });
 
-gulp.task('copy', ['clean'], function() {
-	// copy all files but js
-    return gulp_src_ordered([
-            'src/**/*',
-			'!src/.*',			// no hidden files/dirs in src
-			'!src/.*/**/*',		// no files/dirs in hidden dirs in src
-			'!src/**/*.js',		// no js files from src
-			'!src/webextension/exe/**/*',		// no exe folder
-			'src/**/3rd/*.js'	// make sure to get 3rd party js files though
-        ])
-        .pipe(gulp.dest('dist'));
-});
-
-gulp.task('copy-zip-exe', function() {
+gulp.task('copy-zip-exe', ['clean'], function() {
 	var dest;
 	var srcwebext;
 	switch (options.txtype) {
@@ -96,7 +83,20 @@ gulp.task('copy-zip-exe', function() {
 		// if not fxhyb then replaces executables with zipped version
 });
 
-gulp.task('import-3rdjs', ['copy-zip-exe', 'copy'], function() {
+gulp.task('copy', ['copy-zip-exe'], function() {
+	// copy all files but js
+    return gulp_src_ordered([
+            'src/**/*',
+			'!src/.*',			// no hidden files/dirs in src
+			'!src/.*/**/*',		// no files/dirs in hidden dirs in src
+			'!src/**/*.js',		// no js files from src
+			'!src/webextension/exe/**/*',		// no exe folder
+			'src/**/3rd/*.js'	// make sure to get 3rd party js files though
+        ])
+        .pipe(gulp.dest('dist'));
+});
+
+gulp.task('import-3rdjs', ['copy'], function() {
 	// bring in babel-polyfill to 3rd party directory - determined by clarg txtype
 
 	var dest;
@@ -109,6 +109,7 @@ gulp.task('import-3rdjs', ['copy-zip-exe', 'copy'], function() {
 	// 			dest = 'dist/scripts/3rd';
 	// 		break;
 	// }
+
 	if (fs.existsSync('dist/webextension/scripts/3rd')) {
 		// options.txtype == fxhyb
 		dest = 'dist/webextension/scripts/3rd';
@@ -138,9 +139,12 @@ gulp.task('initial-tx-js', ['import-3rdjs'], function() {
 // start - standalone3888 - is standalone because so `gulp watch` can trigger this without triggering the clean and copy stuff from above
 gulp.task('tx-js', function() {
 	// tx-js stands for transform-javascripts
+	var BABEL_POLYFILL = fs.readFileSync('node_modules/babel-polyfill/dist/polyfill.min.js', 'utf8');
+
 	return gulp.src(['src/**/*.js', '!src/**/3rd/*'])
 		.pipe(gulpif(options.production, replace(/^.*?console\.(warn|info|log|error|exception|time|timeEnd|jsm).*?$/mg, '')))
 		.pipe(babel())
+		.pipe(replace(/(^.*?$)([\s\S]*?)\/\/ #includetop 'babel-polyfill'/m, function($0, $1, $2) { return $1 + '\n\n\/\/ START INCLUDE - babel-polyfill\nvar global = this;\n' + BABEL_POLYFILL + '\/\/ END INCLUDE - babel-polyfill' + $2 }))
 		.pipe(gulp.dest('dist'));
 });
 
