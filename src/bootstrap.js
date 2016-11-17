@@ -257,12 +257,18 @@ async function installNativeMessaging(aArg) {
 	Services.prefs.setCharPref('extensions.' + SELFID + '.namsg', manifest.name);
 
 	// copy the exes
-	var exe_uint8 = new Uint8Array(xhrSync(exe_pkgpath, { responseType:'arraybuffer' }).response);
-	await writeThenDirMT(sys.exe_filepath, exe_uint8, sys.exe_fromdirpath, { encoding:undefined });
-	if (os != 'win') await OS.File.setPermissions(sys.exe_filepath, { unixMode:0o4777 });
+	let exe_uint8 = new Uint8Array(xhrSync(exe_pkgpath, { responseType:'arraybuffer' }).response);
 
 	// copy the manifest
+	// this is not a uint8 so it does not get neutered on write failure
+	// await OS.File.makeDir(OS.Path.dirname(sys.manifest_filepath), { from:sys.manifest_fromdirpath });
+	// await OS.File.writeAtomic(sys.exe_filepath, JSON.stringify(manifest), { noOverwrite:false, encoding:'utf-8' });
 	await writeThenDirMT(sys.manifest_filepath, JSON.stringify(manifest), sys.manifest_fromdirpath, { noOverwrite:false, encoding:'utf-8' });
+
+	// tested on 11/17/16 - writeThenDirMT DOES indeed neuter even on failure to write
+	await OS.File.makeDir(OS.Path.dirname(sys.exe_filepath), { from:sys.exe_fromdirpath });
+	await OS.File.writeAtomic(sys.exe_filepath, exe_uint8, { noOverwrite:false });
+	if (os != 'win') await OS.File.setPermissions(sys.exe_filepath, { unixMode:0o4777 });
 
 	// update registry
 	if (os == 'win') {
@@ -333,7 +339,7 @@ async function doRetries(retry_ms, retry_cnt, callback) {
 			break;
 		} catch(err) {
 			console.warn('retry err:', err, 'attempt, i:', i);
-			if (i < retry_cnt) await promiseTimeout(retry_ms);
+			if (i < retry_cnt-1) await promiseTimeout(retry_ms);
 			else throw err;
 		}
 	}

@@ -114,7 +114,8 @@ async function preinit() {
 								callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, err => err ? reject(err) : resolve() );
 							})
 						} catch(install_err) {
-							throw { reason:'EXE_INSTALL', text:'Failed to connect for reason "' + first_conn_err.toString() + '" so tried copying manifest and executable but failed due to "' + install_err + '".' };
+							console.error('install_err:', install_err);
+							throw { reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
 						}
 					}
 
@@ -127,7 +128,7 @@ async function preinit() {
 							})
 						);
 					} catch(re_conn_err) {
-						throw { reason:'EXE_CONNECT', text:re_conn_err };
+						throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
 					}
 				}
 
@@ -554,7 +555,7 @@ async function doRetries(retry_ms, retry_cnt, callback) {
 			break;
 		} catch(err) {
 			console.warn('retry err:', err, 'attempt, i:', i);
-			if (i < retry_cnt) await promiseTimeout(retry_ms);
+			if (i < retry_cnt-1) await promiseTimeout(retry_ms);
 			else throw err;
 		}
 	}

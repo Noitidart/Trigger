@@ -22,6 +22,8 @@
 		}
 	},
 	"startupfailed_unknown": { "message": "The error is unknown. Please see \"Browser Console\" for more details. Try restarting the extension to fix this problem." },
+	"startupfailed_execonnect": { "message": "Failed to connect to executable: $REASON$", "placeholders": { "REASON": { "content": "$1", "example": "error returned by browser/firefox" } } },
+	"startupfailed_execonnectinstall": { "message": "Failed to connect to executable: $CONNTECT_REASON$\n\nTried to copy executable files but this also failed: $INSTALL_REASON$", "placeholders": { "CONNTECT_REASON":{"content":"$1"}, "INSTALL_REASON":{"content":"$2"} } },
 
 	"browseraction_title": { "message": "Trigger Dashboard" }
 }
