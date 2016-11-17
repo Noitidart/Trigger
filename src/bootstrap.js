@@ -1,5 +1,3 @@
-console.error('at top');
-
 // Imports
 const {classes: Cc, interfaces: Ci, manager: Cm, results: Cr, utils: Cu, Constructor: CC} = Components;
 Cu.import('resource://gre/modules/osfile.jsm');
@@ -33,17 +31,9 @@ function startup(aData, aReason) {
 	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/polyfill.min.js');
 	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/comm/webext.js');
 
-	var promiseallarr = [];
-
-	// wait for all promises, then startup webext
-	Promise.all(promiseallarr)
-		.then(valarr => {
-			console.log('valarr:', valarr);
-			gBgComm = new Comm.server.webext(aData.webExtension); // starts up the webext
-			callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
-			// callInExe = Comm.callInX2.bind(null, gBgComm, 'gExeComm', null);
-		})
-		.catch( caught => console.error('Failed to prepare for webext startup, caught:', caught) );
+	gBgComm = new Comm.server.webext(aData.webExtension); // starts up the webext
+	callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
+	callInExe = Comm.callInX2.bind(null, gBgComm, 'gExeComm', null);
 }
 
 function shutdown(aData, aReason) {
