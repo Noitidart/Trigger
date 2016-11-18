@@ -12,14 +12,11 @@ body {
     margin-top: 50px;
 }
 
-.hero-feature {
-
-}
-
 footer {
     margin: 50px 0;
 }
 
+/* start mine */
 .page-header {
 	background: transparent url("../images/icon.svg") no-repeat scroll 0 -4px;
 	background-size: 47px;
@@ -28,4 +25,3 @@ footer {
 .page-header small {
 	white-space: nowrap;
 }
-/* start mine */

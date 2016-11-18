@@ -51,11 +51,10 @@ function focusAppPage() {
 
 function initAppPage() {
 	gAppPageComponents = [
-		React.createElement(Intro),
-		// React.createElement(FeatureTitle),
-		React.createElement(Hotkey),
-		React.createElement('hr'),
+		React.createElement(Header),
 		React.createElement(Controls),
+		React.createElement('hr'),
+		React.createElement(Hotkey),
 		React.createElement('hr')
 		// React.createElement(Footer)
 	];
@@ -181,8 +180,8 @@ var App = React.createClass({
 	}
 });
 
-var Intro = React.createClass({
-	displayName: 'Intro',
+var Header = React.createClass({
+	displayName: 'Header',
 	render() {
 		return React.createElement('div', { className:'row' },
 			React.createElement('div', { className:'col-lg-12' },
@@ -195,19 +194,6 @@ var Intro = React.createClass({
 				)
 			)
 		);
-		// return React.createElement('header', { className:'jumbotron hero-spacer' },
-		// 	React.createElement('h1', undefined,
-		// 		'A Warm Welcome!'
-		// 	),
-		// 	React.createElement('p', undefined,
-		// 		'Lorem ipsum dolor sit amet, consectetur adipisicing elit. Ipsa, ipsam, eligendi, in quo sunt possimus non incidunt odit vero aliquid similique quaerat nam nobis illo aspernatur vitae fugiat numquam repellat.'
-		// 	),
-		// 	React.createElement('p', undefined,
-		// 		React.createElement('a', { className:'btn btn-primary btn-large' },
-		// 			'Call to action!'
-		// 		)
-		// 	)
-		// );
 	}
 });
 
@@ -259,6 +245,16 @@ var Controls = React.createClass({
 	render() {
 		return React.createElement('div', { className:'row text-center' },
 			React.createElement('div', { className:'col-lg-12' },
+
+				React.createElement('div', { className:'input-group' },
+					React.createElement('input', { className:'form-control', placeholder:'Search', name:'search', id:'search', type:'text' }),
+					React.createElement('div', { className:'input-group-btn' },
+						React.createElement('button', { className:'btn btn-default', type:'submit' },
+							React.createElement('i', { className:'glyphicon glyphicon-search' })
+						)
+					)
+				),
+
 				React.createElement('ul', { className:'pagination' },
 					React.createElement('li', undefined,
 						React.createElement('a', { href:'#' },
