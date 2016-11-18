@@ -174,12 +174,14 @@ async function preinit() {
 				if (exeversion === extversion) {
 					return 'platinfo got, callInNative set, exe started, exe version is correct';
 				} else {
+					return 'debug'; // debug
 					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
 					console.log('as not equal, am fetching exearrbuf');
 					// let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { responseType:'arraybuffer' })).response;
 					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { responseType:'arraybuffer' })).response;
 					// let exebinarystr = new TextDecoder('utf-8').decode(new Uint8Array(exearrbuf));
-					let exebinarystr = Uint8ArrayToString(new Uint8Array(exearrbuf));
+					// let exebinarystr = Uint8ArrayToString(new Uint8Array(exearrbuf));
+					let exebinarystr = new TextDecoder().decode(exearrbuf);
 					try {
 						console.log('sending exearrbuf to exe');
 						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exebinarystr, applied=>applied===true?resolve(true):reject(applied) )  );

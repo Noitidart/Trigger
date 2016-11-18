@@ -17,6 +17,16 @@ footer {
 }
 
 /* start mine */
+.thumbnail .caption {
+	height: 225px;
+	display: table-cell;
+	vertical-align: middle;
+}
+
+.hotkey-add a {
+	font-size: 4em;
+}
+
 .page-header {
 	background: transparent url("../images/icon.svg") no-repeat scroll 0 -4px;
 	background-size: 47px;
@@ -24,4 +34,29 @@ footer {
 }
 .page-header small {
 	white-space: nowrap;
+}
+
+a[data-tooltip] {
+	position: relative;
+}
+
+a[data-tooltip]::before {
+	content: attr(data-tooltip);
+	position: absolute;
+	background-color: #000;
+	color: #fff;
+	border-radius: 3px;
+	transition: opacity 200ms;
+	opacity: 0;
+	pointer-events: none;
+	z-index: 1;
+	top: -2.5em;
+	padding: 4px;
+	margin: 0 auto;
+	text-align: center;
+	transform: translateX(-35%);
+}
+
+a[data-tooltip]:hover::before {
+	opacity: 1;
 }

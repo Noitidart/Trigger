@@ -54,7 +54,11 @@ function initAppPage() {
 		React.createElement(Header),
 		React.createElement(Controls),
 		React.createElement('hr'),
-		React.createElement(Hotkey),
+		React.createElement('div', { className:'row text-center' },
+			React.createElement(Hotkey),
+			React.createElement(Hotkey),
+			React.createElement(HotkeyAdd)
+		),
 		React.createElement('hr')
 		// React.createElement(Footer)
 	];
@@ -189,7 +193,7 @@ var Header = React.createClass({
 					'Trigger',
 					' ',
 					React.createElement('small', { className:'' },
-						'Manage Hotkeys'
+						'My Hotkeys'
 					)
 				)
 			)
@@ -213,25 +217,56 @@ var FeatureTitle = React.createClass({
 var Hotkey = React.createClass({
 	displayName: 'Hotkey',
 	render() {
-		return React.createElement('div', { className:'row text-center' },
-			React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature' },
-				React.createElement('div', { className:'thumbnail' },
-					React.createElement('img', { src:'http://placehold.it/800x500', alt:'' }),
-					React.createElement('div', { className:'caption' },
-						React.createElement('h3', undefined,
-							'Feature Label'
+		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature' },
+			React.createElement('div', { className:'thumbnail' },
+				// React.createElement('img', { src:'http://placehold.it/800x500', alt:'' }),
+				React.createElement('div', { className:'caption' },
+					React.createElement('h3', undefined,
+						'HOTKEY + COMBO'
+					),
+					React.createElement('p', undefined,
+						'Hotkey description goes here. Category only shown in explore.'
+					),
+					React.createElement('p', undefined,
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Change Hotkey' },
+							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
 						),
-						React.createElement('p', undefined,
-							'Lorem ipsum dolor sit amet, consectetur adipisicing elit.'
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Edit' },
+							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
 						),
-						React.createElement('p', undefined,
-							React.createElement('a', { href:'#', className:'btn btn-primary' },
-								'Buy Now!'
-							),
-							' ',
-							React.createElement('a', { href:'#', className:'btn btn-default' },
-								'More Info'
-							)
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Remove' },
+							React.createElement('span', { className:'glyphicon glyphicon-trash' })
+						),
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Share' },
+							React.createElement('span', { className:'glyphicon glyphicon-globe' })
+						),
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Update'},
+							React.createElement('span', { className:'glyphicon glyphicon-download' })
+						)
+					)
+				)
+			)
+		);
+	}
+});
+
+var HotkeyAdd = React.createClass({
+	displayName: 'HotkeyAdd',
+	render() {
+		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature hotkey-add' },
+			React.createElement('div', { className:'thumbnail' },
+				// React.createElement('img', { src:'http://placehold.it/800x500', alt:'' }),
+				React.createElement('div', { className:'caption' },
+					React.createElement('p', { style:{lineHeight:'0',pointerEvents:'none',visibility:'hidden'}},
+						'Hotkey description goes here. Category only shown in explore.'
+					),
+					React.createElement('p', undefined,
+						React.createElement('a', { href:'#', className:'btn btn-default' },
+							React.createElement('span', { className:'glyphicon glyphicon-plus' })
 						)
 					)
 				)
@@ -245,38 +280,39 @@ var Controls = React.createClass({
 	render() {
 		return React.createElement('div', { className:'row text-center' },
 			React.createElement('div', { className:'col-lg-12' },
+				'Manage your collection of hotkeys here. You can browse the community shared commands by click "Add" and then "Community". You can create your own custom commands and share it with the community.'
+			// 	React.createElement('div', { className:'input-group' },
+			// 		React.createElement('input', { className:'form-control', placeholder:'Search', name:'search', id:'search', type:'text' }),
+			// 		React.createElement('div', { className:'input-group-btn' },
+			// 			React.createElement('button', { className:'btn btn-default', type:'submit' },
+			// 				React.createElement('i', { className:'glyphicon glyphicon-search' })
+			// 			)
+			// 		)
+			// 	),
+			//
+			// 	React.createElement('ul', { className:'pagination' },
+			// 		React.createElement('li', undefined,
+			// 			React.createElement('a', { href:'#' },
+			// 				'«'
+			// 			)
+			// 		),
+			// 		React.createElement('li', { className:'active' },
+			// 			React.createElement('a', { href:'#' },
+			// 				'1'
+			// 			)
+			// 		),
+			// 		React.createElement('li', undefined,
+			// 			React.createElement('a', { href:'#' },
+			// 				'2'
+			// 			)
+			// 		),
+			// 		React.createElement('li', undefined,
+			// 			React.createElement('a', { href:'#' },
+			// 				'»'
+			// 			)
+			// 		)
+			// 	)
 
-				React.createElement('div', { className:'input-group' },
-					React.createElement('input', { className:'form-control', placeholder:'Search', name:'search', id:'search', type:'text' }),
-					React.createElement('div', { className:'input-group-btn' },
-						React.createElement('button', { className:'btn btn-default', type:'submit' },
-							React.createElement('i', { className:'glyphicon glyphicon-search' })
-						)
-					)
-				),
-
-				React.createElement('ul', { className:'pagination' },
-					React.createElement('li', undefined,
-						React.createElement('a', { href:'#' },
-							'«'
-						)
-					),
-					React.createElement('li', { className:'active' },
-						React.createElement('a', { href:'#' },
-							'1'
-						)
-					),
-					React.createElement('li', undefined,
-						React.createElement('a', { href:'#' },
-							'2'
-						)
-					),
-					React.createElement('li', undefined,
-						React.createElement('a', { href:'#' },
-							'»'
-						)
-					)
-				)
 			)
 		);
 	}
