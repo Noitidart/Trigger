@@ -24,6 +24,25 @@
 	"startupfailed_unknown": { "message": "The error is unknown. Please see \"Browser Console\" for more details. Try restarting the extension to fix this problem." },
 	"startupfailed_execonnect": { "message": "Failed to connect to executable: $REASON$", "placeholders": { "REASON": { "content": "$1", "example": "error returned by browser/firefox" } } },
 	"startupfailed_execonnectinstall": { "message": "Failed to connect to executable: $CONNTECT_REASON$\n\nTried to copy executable files but this also failed: $INSTALL_REASON$", "placeholders": { "CONNTECT_REASON":{"content":"$1"}, "INSTALL_REASON":{"content":"$2"} } },
+	"startupfailed_exemismatch": {
+		"message": "Version of installed executable ($EXEVER$) does not match extension ($EXTVER$). Automatic executable update failed. $HOWTOFIX$",
+		"placeholders": {
+			"EXEVER": {
+				"content": "$1",
+				"example": "the version of the EXE, ex: 1.0"
+			},
+			"EXTVER": {
+				"content": "$2",
+				"example": "the version of the EXTENSION, ex: 1.0"
+			},
+			"HOWTOFIX": {
+				"content": "$3",
+				"example": "either `startupfailed_exemismatch_howtofix1` or `startupfailed_exemismatch_howtofix2`"
+			}
+		}
+	},
+	"startupfailed_exemismatch_howtofix1": { "message": "Please manually upgrade the executable *OR* downgrade the extension." },
+	"startupfailed_exemismatch_howtofix2": { "message": "Please manually downgrade the executable *OR* upgrade the extension." },
 
 	"browseraction_title": { "message": "Trigger Dashboard" }
 }

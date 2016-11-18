@@ -3,6 +3,8 @@ var nub = {
 		id: chrome.runtime.id,
 		version: chrome.runtime.getManifest().version,
 		chromemanifestkey: 'trigger' // crossfile-link37388
+		// startup_reason: string; enum[STARTUP, UPGRADE, DOWNGRADE, INSTALL]
+		// old_version: set only on UPGRADE/DOWNGRADE
 	},
 	browser: {
 		name: getBrowser().name.toLowerCase(),
@@ -34,7 +36,7 @@ var nub = {
 		}
 	},
 	stg: {
-		// defaults - keys that present in here during `preinit` are fetched on startup
+		// defaults - keys that present in here during `preinit` are fetched on startup and maintained whenever `storageCall` with `set` is done
 			// 3 types
 				// prefs are prefeixed with "pref_"
 				// mem are prefeixed with "mem_" - mem stands for extension specific "cookies"/"system memory"
@@ -66,9 +68,10 @@ async function preinit() {
 			data: object - only if EXE_MISMATCH - keys: exeversion
 		}
 	*/
-	// fetch storage
+	// fetch storage - set nub.self.startup_reason and nub.self.old_version
 	basketmain.add(
 		async function() {
+			// fetch storage and set always update values (keys in nub.stg)
 			try {
 				let stgeds = await storageCall('local', 'get', Object.keys(nub.stg));
 				for (let key in stgeds) {
@@ -77,6 +80,32 @@ async function preinit() {
 			} catch(err) {
 				throw { reason:'STG_CONNECT', text:err.toString() };
 			}
+
+			// set nub.self.startup_reason and old_version
+			let lastversion = nub.stg.mem_lastversion;
+			if (lastversion === '-1') {
+				// installed / first run
+				nub.self.startup_reason = 'INSTALL';
+				storageCall('local', 'set', { mem_lastversion:nub.self.version })
+				.then(a=>console.log('set, nub.stg:', nub.stg));
+			} else if (lastversion !== nub.self.version) {
+				// downgrade or upgrade
+				if (isSemVer(nub.self.version, '>' + lastversion)) {
+					// upgrade
+					nub.self.startup_reason = 'UPGRADE';
+				} else {
+					// downgrade
+					nub.self.startup_reason = 'DOWNGRADE';
+				}
+				nub.self.old_version = lastversion;
+				storageCall('local', 'set', { mem_lastversion:nub.self.version })
+				.then(a=>console.log('set, nub.stg:', nub.stg));
+			} else {
+				// lastversion === nub.self.version
+				// browser startup OR enabled after having disabled
+				nub.self.startup_reason = 'STARTUP';
+			}
+
 		}()
 	);
 
@@ -117,19 +146,19 @@ async function preinit() {
 							console.error('install_err:', install_err);
 							throw { reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
 						}
+
+						// ok installed, try re-connecting
+						try {
+							await new Promise((resolve, reject) => {
+								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
+							});
+						} catch(re_conn_err) {
+							throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
+						}
+					} else {
+						throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', first_conn_err) };
 					}
 
-					// try re-connecting
-					try {
-						// try reconnecting 10 times over 5000ms
-						await doRetries(500, 10, () =>
-							new Promise((resolve, reject) => {
-								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err));
-							})
-						);
-					} catch(re_conn_err) {
-						throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
-					}
 				}
 
 				// ok connected
@@ -138,15 +167,22 @@ async function preinit() {
 
 				// verify exe version
 				let exeversion = await new Promise( resolve => callInExe('getExeVersion', undefined, val => resolve(val)) );
+				console.log('exeversion:', exeversion);
 				let extversion = nub.self.version;
+				console.log('extversion:', extversion);
+				console.log('equal?');
 				if (exeversion === extversion) {
 					return 'platinfo got, callInNative set, exe started, exe version is correct';
 				} else {
 					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
-					let exearrbuf = xhrSync(getNamsgExepkgPath()).response;
-
+					console.log('as not equal, am fetching exearrbuf');
+					// let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { responseType:'arraybuffer' })).response;
+					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { responseType:'arraybuffer' })).response;
+					// let exebinarystr = new TextDecoder('utf-8').decode(new Uint8Array(exearrbuf));
+					let exebinarystr = Uint8ArrayToString(new Uint8Array(exearrbuf));
 					try {
-						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exearrbuf, err=>err?reject(err):resolve() )  );
+						console.log('sending exearrbuf to exe');
+						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exebinarystr, applied=>applied===true?resolve(true):reject(applied) )  );
 					} catch(exe_apply_err) {
 						console.error('exe_apply_err:', exe_apply_err);
 						let howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
@@ -199,24 +235,18 @@ function init() {
 
 	startupBrowserAction();
 
-	var lastversion = nub.stg.mem_lastversion;
-	if (lastversion === '-1') {
-		// installed / first run
-		console.error('FIRST RUN');
-		storageCall('local', 'set', { mem_lastversion:nub.self.version })
-		.then(a=>console.log('set, nub.stg:', nub.stg));
-	} else if (lastversion !== nub.self.version) {
-		// downgrade or upgrade
-		if (isSemVer(nub.self.version, '>' + lastversion)) {
-			// upgrade
-			console.error('UPDGRADE');
-		} else {
-			// downgrade
-			console.error('DOWNGRADE');
-		}
-		storageCall('local', 'set', { mem_lastversion:nub.self.version })
-		.then(a=>console.log('set, nub.stg:', nub.stg));
-	} // else if (lastversion === nub.self.version) { } // browser startup OR enabled after having disabled
+	switch (nub.self.startup_reason) {
+		case 'STARTUP':
+				// was already installed, just regular startup to enabling or browser starting up
+			break;
+		case 'INSTALL':
+				// first run
+			break;
+		case 'UPGRADE':
+			break;
+		case 'DOWNGRADE':
+			break;
+	}
 
 }
 
@@ -527,9 +557,47 @@ function formatNubPaths() {
 	}
 }
 
+function xhrPromise(url, opt={}) {
+	// set default options
+	opt = Object.assign({
+		responseType: 'text',
+		method: 'GET',
+		data: undefined
+	}, opt);
+	if (opt.url) url = url;
+
+	return new Promise( (resolve, reject) => {
+		let xhr = new XMLHttpRequest();
+
+		let evf = f => ['load', 'error', 'abort', 'timeout'].forEach(f);
+
+		let handler = ev => {
+			evf(m => xhr.removeEventListener(m, handler, false));
+		    switch (ev.type) {
+		        case 'load':
+		            	resolve(xhr);
+		            break;
+		        case 'abort':
+		        case 'error':
+		        case 'timeout':
+						reject({ xhr, reason:ev.type });
+		            break;
+		        default:
+					reject({ xhr, reason:'unknown', type:ev.type });
+		    }
+		};
+
+		evf(m => xhr.addEventListener(m, handler, false));
+
+		xhr.open(opt.method, url, true);
+		xhr.responseType = opt.responseType;
+		xhr.send(opt.data);
+	});
+}
+
 function xhrSync(url, opt={}) {
 	const optdefault = {
-		responseType: 'text',
+		// responseType: 'text', // DOMException [InvalidAccessError: "synchronous XMLHttpRequests do not support timeout and responseType."
 		method: 'GET'
 	};
 	opt = Object.assign(optdefault, opt);
@@ -538,7 +606,7 @@ function xhrSync(url, opt={}) {
 
 	let xhreq = new XMLHttpRequest();
 	xhreq.open(opt.method, url, false);
-	xhreq.responseType = opt.responseType;
+	// xhreq.responseType = opt.responseType;
 	xhreq.send();
 }
 
@@ -560,6 +628,21 @@ async function doRetries(retry_ms, retry_cnt, callback) {
 		}
 	}
 }
+function Uint8ArrayToString(arr) {
+  let MAX_ARGC = 65535;
+  let len = arr.length;
+  let s = "";
+  for (let i = 0; i < len; i += MAX_ARGC) {
+    if (i + MAX_ARGC > len) {
+      s += String.fromCharCode.apply(null, arr.subarray(i));
+    } else {
+      s += String.fromCharCode.apply(null, arr.subarray(i, i + MAX_ARGC));
+    }
+  }
+  return s;
+}
 // end - cmn
 
-preinit();
+preinit()
+.then(val => console.log('preinit done'))
+.catch(err => console.error('preinit err:', err));
