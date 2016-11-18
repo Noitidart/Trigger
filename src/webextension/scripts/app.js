@@ -187,10 +187,10 @@ var Intro = React.createClass({
 		return React.createElement('div', { className:'row' },
 			React.createElement('div', { className:'col-lg-12' },
 				React.createElement('h1', { className:'page-header' },
-					'Manage Hotkeys',
+					'Trigger',
 					' ',
-					React.createElement('small', { className:'pull-right logo' },
-						'Trigger'
+					React.createElement('small', { className:'' },
+						'Manage Hotkeys'
 					)
 				)
 			)

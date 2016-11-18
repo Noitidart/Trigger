@@ -20,9 +20,12 @@ footer {
     margin: 50px 0;
 }
 
-.logo {
-	background: transparent url("../images/icon.svg") no-repeat scroll 0 35%;
-	background-size: 30px;
-	padding-left: 38px;
+.page-header {
+	background: transparent url("../images/icon.svg") no-repeat scroll 0 -4px;
+	background-size: 47px;
+	text-indent: 57px;
+}
+.page-header small {
+	white-space: nowrap;
 }
 /* start mine */
