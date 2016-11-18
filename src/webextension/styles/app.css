@@ -1,9 +1,28 @@
-label {
-	width: 9em;
-	font-weight: bold;
-	margin: 0 6px;
+/*
+ * Start Bootstrap - Heroic Features (http://startbootstrap.com/)
+ * Copyright 2013-2016 Start Bootstrap
+ * Licensed under MIT (https://github.com/BlackrockDigital/startbootstrap/blob/gh-pages/LICENSE)
+ */
+
+body {
+
 }
 
-#root {
-	padding: 10px;
+.hero-spacer {
+    margin-top: 50px;
 }
+
+.hero-feature {
+
+}
+
+footer {
+    margin: 50px 0;
+}
+
+.logo {
+	background: transparent url("../images/icon.svg") no-repeat scroll 0 35%;
+	background-size: 30px;
+	padding-left: 38px;
+}
+/* start mine */
