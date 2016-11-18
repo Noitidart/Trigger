@@ -17,11 +17,6 @@ footer {
 }
 
 /* start mine */
-.thumbnail .caption {
-	height: 225px;
-	display: table-cell;
-	vertical-align: middle;
-}
 
 .hotkey-add a {
 	font-size: 4em;

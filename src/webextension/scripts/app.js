@@ -54,11 +54,7 @@ function initAppPage() {
 		React.createElement(Header),
 		React.createElement(Controls),
 		React.createElement('hr'),
-		React.createElement('div', { className:'row text-center' },
-			React.createElement(Hotkey),
-			React.createElement(Hotkey),
-			React.createElement(HotkeyAdd)
-		),
+		React.createElement(Page),
 		React.createElement('hr')
 		// React.createElement(Footer)
 	];
@@ -184,6 +180,19 @@ var App = React.createClass({
 	}
 });
 
+var Page = React.createClass({
+	displayName: 'Page',
+	render() {
+		return React.createElement('span', undefined,
+			React.createElement('div', { className:'row text-center' },
+				React.createElement(Hotkey),
+				React.createElement(Hotkey),
+				React.createElement(HotkeyAdd)
+			)
+		);
+	}
+});
+
 var Header = React.createClass({
 	displayName: 'Header',
 	render() {
@@ -234,6 +243,10 @@ var Hotkey = React.createClass({
 						' ',
 						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Edit' },
 							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
+						),
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Disable' },
+							React.createElement('span', { className:'glyphicon glyphicon-off' })
 						),
 						' ',
 						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Remove' },
