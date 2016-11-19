@@ -55,3 +55,18 @@ a[data-tooltip]::before {
 a[data-tooltip]:hover::before {
 	opacity: 1;
 }
+
+
+.glyphicon.spinning {
+    animation: spin 1s infinite linear;
+}
+
+@keyframes spin {
+    from { transform: scale(1) rotate(0deg); }
+    to { transform: scale(1) rotate(360deg); }
+}
+
+.no-btn {
+	pointer-events: none;
+	border: 0 !important;
+}

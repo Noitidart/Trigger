@@ -177,7 +177,7 @@ async function preinit() {
 					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
 					console.log('as not equal, am fetching exearrbuf');
 					// let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { responseType:'arraybuffer' })).response;
-					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { responseType:'arraybuffer' })).response;
+					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { responseType:'arraybuffer' })).xhr.response;
 					// let exebinarystr = new TextDecoder('utf-8').decode(new Uint8Array(exearrbuf));
 					// let exebinarystr = Uint8ArrayToString(new Uint8Array(exearrbuf));
 					let exebinarystr = new TextDecoder('utf-8').decode(exearrbuf);
@@ -558,12 +558,14 @@ function formatNubPaths() {
 	}
 }
 
+// rev1 - not yet committed
 function xhrPromise(url, opt={}) {
 	// set default options
 	opt = Object.assign({
 		responseType: 'text',
 		method: 'GET',
-		data: undefined
+		data: undefined,
+		reject: true
 	}, opt);
 	if (opt.url) url = url;
 
@@ -576,15 +578,17 @@ function xhrPromise(url, opt={}) {
 			evf(m => xhr.removeEventListener(m, handler, false));
 		    switch (ev.type) {
 		        case 'load':
-		            	resolve(xhr);
+		            	resolve({ xhr, reason:ev.type });
 		            break;
 		        case 'abort':
 		        case 'error':
 		        case 'timeout':
-						reject({ xhr, reason:ev.type });
+						if (opt.reject) reject({ xhr, reason:ev.type });
+						else resolve({ xhr, reason:ev.type });
 		            break;
 		        default:
-					reject({ xhr, reason:'unknown', type:ev.type });
+					if (opt.reject) reject({ xhr, reason:'unknown', type:ev.type });
+					else resolve({ xhr, reason:'unknown', type:ev.type });
 		    }
 		};
 
