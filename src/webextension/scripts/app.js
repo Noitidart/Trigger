@@ -248,7 +248,7 @@ let app = Redux.combineReducers({
 	// localized name and description are in filename_locale.js
 	locale: {
 		// remote meta data
-		commit: ''
+		sha: ''
 		content: `
 			'en-US': {
 				name: ''
@@ -258,7 +258,7 @@ let app = Redux.combineReducers({
 	},
 	code: [ // local has this too, but it will only have one entry
 		{
-			commit: ''
+			sha: ''
 			// remote meta data
 			// filecontents is like this:
 			content: ''
@@ -399,10 +399,9 @@ let Page = React.createClass({
 						// obviously isedit = true
 						// let isedit = !!pref_hotkey;
 						let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
-						let localejson = JSON.parse(pref_hotkey.locale.content)[locale];
-						name = localejson.name;
-						description = localejson.description;
-						code = pref_hotkey.code.content;
+						name = pref_hotkey.locale.content[locale].name;
+						description = pref_hotkey.locale.content[locale].description;
+						code = pref_hotkey.code.content.exec;
 					}
 
 					rels.push(
@@ -599,17 +598,188 @@ let Hotkey = React.createClass({
 			}
 		));
 	},
-	share(e) {
+	share: async function(e) {
 		if (!stopClickAndCheck0(e)) return;
 
+		let { pref_hotkey } = this.props;
+		let { filename, locale, code } = pref_hotkey;
 
+		let state = store.getState();
+
+		// let oc = nub.oauth.github; // oauth_config
+		let mos = state.stg.mem_oauth.github; //mem_oauth_serviceid
+		if (!mos) {
+			if (confirm('You need to authorize your Github account. Authorize now?')) {
+				callInBackground('openAuthTab', { serviceid:'github' });
+			}
+			return;
+		}
+
+		let new_pref_hotkey = JSON.parse(JSON.stringify(pref_hotkey));
+
+		// step 1 - delete repo
+		// `https://api.github.com/repos/${mos.dotname}/testapi`
+		// gives 204 when done. or 404 if it wasnt there meaning nothing to delete
+		await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
+
+		// step 2 - fork it - 202 after forked - even if already forked it gives 202
+		// https://api.github.com/repos/Noitidart/testapi/forks
+		let xpfork = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/forks', { method:'POST', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
+		console.log('xpfork:', xpfork);
+		if (xpfork.xhr.status !== 202)
+			throw 'Failed to do step "Pull Request Step 2 - Fork Repo"';
+
+		// step 2.1 - need to wait till fork completes - i do 1min - docs say it can take up to 5, if more then that they say contact support
+		// http://stackoverflow.com/a/33667417/1828637
+		// (new Date()).toISOString().replace(/\.\d+Z/,'Z')
+		// https://api.github.com/repos/noitdev/testapi/commits?since=2016-11-20T06:14:02Z
+		// if get 409 then not yet done. wait till get 200
+		await doRetries(10000, 6, async function() {
+			let data = queryStringDom({ since: (new Date()).toISOString().replace(/\.\d+Z/,'Z') });
+			let xpwait = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/commits?${data}`, { headers:{ Accept:'application/vnd.github.v3+json' } });
+			console.log('xpwait:', xpwait);
+			if (xpwait.xhr.status === 200) return 'fork ready';
+			else throw 'Failed to do step "Pull Request Step 2.1 - Wait Fork Finish"';
+		});
+
+		// step 3 - create/update -code and -locale files
+		let prtitle;
+		if (filename.startsWith('_')) {
+			// never shared yet
+			prtitle = 'Add new command';
+
+			// step 3.1
+			// check if filename exists - so getting avaialble filename as newfilename
+			// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
+			let newfilename = filename.substr(1);
+			while (true) {
+				let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
+				console.log('xpexists:', xpexists);
+				if (xpexists.xhr.status === 404) break; // newfilename is not taken
+				newfilename = '' + Date.now();
+				await promiseTimeout(200);
+			}
+			new_pref_hotkey.filename = newfilename;
+
+			// step 3.2 - create code file
+			let xpcreate_code = await xhrPromise({
+				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`,
+				method: 'PUT',
+				restype: 'json',
+				data: JSON.stringify({
+					message: 'Add new command code',
+					content: btoa(JSON.stringify(code.content))
+				}),
+				headers: {
+					Accept: 'application/vnd.github.v3+json',
+					Authorization: 'token ' + mos.access_token
+				}
+			});
+			console.log('xpcreate_code:', xpcreate_code);
+			if (xpcreate_code.xhr.status !== 201) {
+				throw 'Failed to do step "Pull Request Step 3.2 - Create Code File"';
+			} else {
+				let { content:{sha} } = xpcreate_code.xhr.response;
+				// delete new_pref_hotkey.code.base_sha; // doesnt have base_sha as this is "never shared yet"
+				new_pref_hotkey.code.sha = sha;
+			}
+
+			// step 3.3 - create locale file
+			let xpcreate_locale = await xhrPromise({
+				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-locale.json`,
+				method: 'PUT',
+				restype: 'json',
+				data: JSON.stringify({
+					message: 'Add new command locale',
+					content: btoa(JSON.stringify(locale.content))
+				}),
+				headers: {
+					Accept: 'application/vnd.github.v3+json',
+					Authorization: 'token ' + mos.access_token
+				}
+			});
+			console.log('xpcreate_locale:', xpcreate_locale);
+			if (xpcreate_locale.xhr.status !== 201) {
+				throw 'Failed to do step "Pull Request Step 3.3 - Create Locale File"';
+			} else {
+				let { content:{sha} } = xpcreate_locale.xhr.response;
+				// delete new_pref_hotkey.locale.base_sha; // doesnt have base_sha as this is "never shared yet"
+				new_pref_hotkey.locale.sha = sha;
+			}
+		} else {
+			// update file
+
+			// get sha of filename-code.json and filename-locale.json
+			// `https://api.github.com/repos/noitdev/testapi/contents/${filename}-code.json`
+
+			// TODO:
+			// prtitle = "Update command locale"
+			// prtitle = "Update command code"
+			// prtitle = "Update command code and locale"
+
+			// updating file is same like creating just need sha in there - send string not formdata
+			// https://api.github.com/repos/noitdev/testapi/contents/filename-code.json
+			/*
+			{
+			  "message": "updating file",
+			  "content": "MnggUkFXUg==",
+			  "sha": "0c0fd25dfe67e6bf54ea3aad49dac1d8113d8aa8"
+			}
+			*/
+		}
+
+		// step 4 - create pull request
+		// https://api.github.com/repos/Noitidart/testapi/pulls
+		let xppr = await xhrPromise({
+			url: 'https://api.github.com/repos/Noitidart/Trigger-Community/pulls',
+			method: 'POST',
+			restype: 'json',
+			data: JSON.stringify({
+				title: prtitle,
+				body: 'see title',
+				head: `${mos.login}:master`,
+				base: 'master'
+			}),
+			headers: {
+				Accept: 'application/vnd.github.v3+json',
+				Authorization: 'token ' + mos.access_token
+			}
+		});
+		console.log('xppr:', xppr);
+		if (xppr.xhr.status !== 201)
+			throw 'Failed to do step "Pull Request Step 4 - Create Request"';
+
+		let { html_url:prurl } = xppr.xhr.response;
+
+		// `https://api.github.com/repos/${mos.dotname}/testapi`
+		// gives 204 when done - if it errors here i dont care
+		try {
+			await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
+		} catch(ignore) {}
+
+		/////// ok pull request creation complete - update store and storage
+		// update store
+		let newstg = {
+			...state.stg,
+			pref_hotkeys: state.stg.pref_hotkeys.map(a_pref_hotkey => a_pref_hotkey.filename == filename ? new_pref_hotkey : a_pref_hotkey) // `filename` here is really `oldfilename`
+		};
+		store.dispatch(setMainKeys({
+			stg: newstg
+		}));
+
+		// update storage
+		let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
+		await callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
+
+		if (confirm('Succesfully shared! Pending approval. Open approval topic in new tab?'))
+			callInBackground('addTab', prurl);
 	},
 	render() {
 		let { pref_hotkey } = this.props;
 
 		let { enabled, filename, combo, locale, code } = pref_hotkey;
 
-		let { name, description } = JSON.parse(locale.content)['en-US'];
+		let { name, description } = locale.content['en-US'];
 
 		let combotxt;
 		let hashotkey = true;
@@ -619,9 +789,9 @@ let Hotkey = React.createClass({
 		}
 
 		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
-		// cant use `locale.commit` and `code.commit` to determine `islocal`, as it might be edited and not yet shared
+		// cant use `locale.sha` and `code.sha` to determine `islocal`, as it might be edited and not yet shared
 
-		let isshared = (!islocal && locale.commit && code.commit);
+		let isshared = (!islocal && locale.sha && code.sha);
 
 		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
 
@@ -654,7 +824,7 @@ let Hotkey = React.createClass({
 							React.createElement('span', { className:'glyphicon glyphicon-trash' })
 						),
 						!isshared && ' ',
-						!isshared && React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Share' },
+						!isshared && React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Share', onClick:this.share },
 							React.createElement('span', { className:'glyphicon glyphicon-globe' })
 						),
 						!isupdated && ' ',
@@ -703,17 +873,19 @@ let Controls = React.createClass({
 				filename: editing.filename,
 				combo: null,
 				locale: {
-					commit: null,
-					content: JSON.stringify({
+					sha: null,
+					content: {
 						'en-US': {
 							name: document.getElementById('name').value.trim(),
 							description: document.getElementById('description').value.trim()
 						}
-					})
+					}
 				},
 				code: {
-					commit: null,
-					content: document.getElementById('code').value.trim()
+					sha: null,
+					content: {
+						exec: document.getElementById('code').value.trim()
+					}
 				}
 			};
 
@@ -728,19 +900,15 @@ let Controls = React.createClass({
 				let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
 
 				// test if anything changed - and if it wasnt, then take into newhotkey reference to it
-				if (newhotkey.locale.content == pref_hotkey.locale.content) {
-					// not changed, so even keep same reference
-					newhotkey.locale = pref_hotkey.locale;
-				} else {
-					isreallyedited = true;
-				}
-
-				if (newhotkey.code.content == pref_hotkey.code.content) {
-					// not changed, so even keep same reference
-					newhotkey.code = pref_hotkey.code;
-				} else {
-					isreallyedited = true;
-				}
+				['locale', 'code'].forEach(key => {
+					if (JSON.stringify(newhotkey[key].content) == JSON.stringify(pref_hotkey[key].content)) {
+						// not changed, so even keep same reference
+						newhotkey[key] = pref_hotkey[key];
+					} else {
+						newhotkey[key].base_sha = pref_hotkey[key].sha || pref_hotkey[key].base_sha; // base_sha indicates it is pending share
+						isreallyedited = true;
+					}
+				});
 
 				if (isreallyedited) {
 					// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
@@ -1106,5 +1274,132 @@ function deepAccessUsingString(obj, key){
     }
     return undefined;
   }, obj);
+}
+
+async function promiseTimeout(milliseconds) {
+	await new Promise(resolve => setTimeout(()=>resolve(), milliseconds))
+}
+
+async function doRetries(retry_ms, retry_cnt, callback) {
+	// callback should return promise
+	// total_time = retry_ms * retry_cnt
+	for (let i=0; i<retry_cnt; i++) {
+		try {
+			return await callback();
+			break;
+		} catch(err) {
+			console.warn('retry err:', err, 'attempt, i:', i);
+			if (i < retry_cnt-1) await promiseTimeout(retry_ms);
+			else throw err;
+		}
+	}
+}
+
+function queryStringDom(objstr, opts={}) {
+	// queryString using DOM capabilities, like `new URL`
+
+	// objstr can be obj or str
+	// if obj then it does stringify
+	// if str then it does parse. if str it should be a url
+
+	if (typeof(objstr) == 'string') {
+		// parse
+		// is a url?
+		let url;
+		try {
+			url = new URL(objstr);
+		} catch(ignore) {}
+
+		// if (url) objstr = objstr.substr(url.search(/[\?\#]/));
+		//
+		// if (objstr.startsWith('?')) objstr = objstr.substr(1);
+		// if (objstr.startsWith('#')) objstr = objstr.substr(1);
+
+		if (!url) throw new Error('Non-url not yet supported');
+
+		let ret = {};
+
+		let strs = [];
+		if (url.search) strs.push(url.search);
+		if (url.hash) strs.push(url.hash);
+		if (!strs.length) throw new Error('no search or hash on this url! ' + objstr);
+
+		strs.forEach(str => {
+			// taken from queryString 4.2.3 - https://github.com/sindresorhus/query-string/blob/3ba022410dbcff27404de090b33ce9b67768c139/index.js
+			str = str.trim().replace(/^(\?|#|&)/, '');
+			str.split('&').forEach(function (param) {
+				var parts = param.replace(/\+/g, ' ').split('=');
+				// Firefox (pre 40) decodes `%3D` to `=`
+				// https://github.com/sindresorhus/query-string/pull/37
+				var key = parts.shift();
+				var val = parts.length > 0 ? parts.join('=') : undefined;
+
+				key = decodeURIComponent(key);
+
+				// missing `=` should be `null`:
+				// http://w3.org/TR/2012/WD-url-20120524/#collect-url-parameters
+				val = val === undefined ? null : decodeURIComponent(val);
+
+				if (ret[key] === undefined) {
+					ret[key] = val;
+				} else if (Array.isArray(ret[key])) {
+					ret[key].push(val);
+				} else {
+					ret[key] = [ret[key], val];
+				}
+			});
+		});
+
+		return ret;
+	} else {
+		// stringify
+		// taken from queryString github release 4.2.3 but modified out the objectAssign for Object.assign and anded encode as strict-uri-encode - https://github.com/sindresorhus/query-string/blob/3ba022410dbcff27404de090b33ce9b67768c139/index.js
+		let objectAssign = Object.assign;
+		let encode = str => encodeURIComponent(str).replace(/[!'()*]/g, x => `%${x.charCodeAt(0).toString(16).toUpperCase()}`);
+		let obj = objstr;
+		// strict-uri-encode taken from - github release 2.0.0 - https://github.com/kevva/strict-uri-encode/blob/0b2dfae92f37618e1cb5f15911bb717e45b71385/index.js
+
+		// below
+		var defaults = {
+			encode: true,
+			strict: true
+		};
+
+		opts = objectAssign(defaults, opts);
+
+		return obj ? Object.keys(obj).sort().map(function (key) {
+			var val = obj[key];
+
+			if (val === undefined) {
+				return '';
+			}
+
+			if (val === null) {
+				return encode(key, opts);
+			}
+
+			if (Array.isArray(val)) {
+				var result = [];
+
+				val.slice().forEach(function (val2) {
+					if (val2 === undefined) {
+						return;
+					}
+
+					if (val2 === null) {
+						result.push(encode(key, opts));
+					} else {
+						result.push(encode(key, opts) + '=' + encode(val2, opts));
+					}
+				});
+
+				return result.join('&');
+			}
+
+			return encode(key, opts) + '=' + encode(val, opts);
+		}).filter(function (x) {
+			return x.length > 0;
+		}).join('&') : '';
+	}
 }
 // end - cmn
