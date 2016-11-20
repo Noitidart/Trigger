@@ -70,3 +70,7 @@ a[data-tooltip]:hover::before {
 	pointer-events: none;
 	border: 0 !important;
 }
+
+.input-group-addon:first-child {
+	min-width: 8em;
+}

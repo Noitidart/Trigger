@@ -247,8 +247,8 @@ let app = Redux.combineReducers({
 	// code is in filename_code.js
 	// localized name and description are in filename_locale.js
 	locale: {
-		// remote meta data
-		commit_sha: ''
+		commit_sha
+		file_sha
 		content: `
 			'en-US': {
 				name: ''
@@ -258,9 +258,8 @@ let app = Redux.combineReducers({
 	},
 	code: [ // local has this too, but it will only have one entry
 		{
-			commit_sha: ''
-			// remote meta data
-			// filecontents is like this:
+			commit_sha
+			file_sha
 			content: ''
 		}
 	]
@@ -658,125 +657,78 @@ let Hotkey = React.createClass({
 			}
 			new_pref_hotkey.filename = newfilename;
 
-			// step 3a.2 - create code file
-			let xpcreate_code = await xhrPromise({
-				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`,
-				method: 'PUT',
-				restype: 'json',
-				data: JSON.stringify({
-					message: 'Add new command code',
-					content: btoa(JSON.stringify(code.content))
-				}),
-				headers: {
-					Accept: 'application/vnd.github.v3+json',
-					Authorization: 'token ' + mos.access_token
+			// step 3a.2 - create code & locale file
+			for (let filetype of ['code', 'locale']) {
+				let xpcreate = await xhrPromise({
+					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-${filetype}.json`,
+					method: 'PUT',
+					restype: 'json',
+					data: JSON.stringify({
+						message: 'Add new command ' + filetype,
+						content: btoa(JSON.stringify(pref_hotkey[filetype].content))
+					}),
+					headers: {
+						Accept: 'application/vnd.github.v3+json',
+						Authorization: 'token ' + mos.access_token
+					}
+				});
+				console.log('xpcreate:', xpcreate);
+				if (xpcreate.xhr.status !== 201) {
+					throw 'Failed to do step "Pull Request Step 3a.2 - Create "${filetype}" File"';
+				} else {
+					let { content:{sha:file_sha}, commit:{sha:commit_sha} } = xpcreate.xhr.response;
+					// delete new_pref_hotkey[filetype].base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
+					new_pref_hotkey[filetype].file_sha = file_sha;
+					// delete new_pref_hotkey[filetype].base_commit_sha; // doesnt have base_commit_sha as this is "never shared yet"
+					new_pref_hotkey[filetype].commit_sha = commit_sha;
 				}
-			});
-			console.log('xpcreate_code:', xpcreate_code);
-			if (xpcreate_code.xhr.status !== 201) {
-				throw 'Failed to do step "Pull Request Step 3a.2 - Create Code File"';
-			} else {
-				let { commit:{sha} } = xpcreate_code.xhr.response;
-				// delete new_pref_hotkey.code.base_commit_sha; // doesnt have base_commit_sha as this is "never shared yet"
-				new_pref_hotkey.code.commit_sha = sha;
-			}
-
-			// step 3a.3 - create locale file
-			let xpcreate_locale = await xhrPromise({
-				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-locale.json`,
-				method: 'PUT',
-				restype: 'json',
-				data: JSON.stringify({
-					message: 'Add new command locale',
-					content: btoa(JSON.stringify(locale.content))
-				}),
-				headers: {
-					Accept: 'application/vnd.github.v3+json',
-					Authorization: 'token ' + mos.access_token
-				}
-			});
-			console.log('xpcreate_locale:', xpcreate_locale);
-			if (xpcreate_locale.xhr.status !== 201) {
-				throw 'Failed to do step "Pull Request Step 3a.3 - Create Locale File"';
-			} else {
-				let { commit:{sha} } = xpcreate_locale.xhr.response;
-				// delete new_pref_hotkey.locale.base_commit_sha; // doesnt have base_commit_sha as this is "never shared yet"
-				new_pref_hotkey.locale.commit_sha = sha;
 			}
 		} else {
 			// update file
 
 			if (!code.commit_sha && !locale.commit_sha) {
-				prtitle = 'Update command code and locale'
+				prtitle = 'Update command code and locale';
 			} else if (!code.commit_sha) {
-				prtitle = 'Update command code'
+				prtitle = 'Update command code';
 			} else {
-				prtitle = 'Update command locale'
+				prtitle = 'Update command locale';
 			}
 
-			// is code updated/not-shared?
-			if (!code.commit_sha) {
-				// step 3b.1 get sha of -code.json
-				let xpshacode = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-code.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
-				console.log('xpshacode:', xpshacode);
-				if (xpshacode.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get Code File SHA"';
-				let code_file_sha = xpshacode.xhr.response.sha;
+			// check if filetype (code || locale) is shared and if it isnt then share it
+			for (let filetype of ['code', 'locale']) {
+				if (!pref_hotkey[filetype].commit_sha) {
+					// step 3b.1 get sha of -filetype.json
+					let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-${filetype}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+					console.log('xpsha:', xpsha);
+					if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filetype}" File SHA"';
+					let file_sha = xpsha.xhr.response.sha;
+					// let file_sha = pref_hotkey[filetype].base_file_sha; // TODO: this is experiement, see how it affects it
 
-				// step 3b.2 - update -code.json
-				let xpupdate_code = await xhrPromise({
-					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-code.json`,
-					method: 'PUT',
-					restype: 'json',
-					data: JSON.stringify({
-						message: 'Update command code',
-						content: btoa(JSON.stringify(code.content)),
-						sha: code_file_sha
-					}),
-					headers: {
-						Accept: 'application/vnd.github.v3+json',
-						Authorization: 'token ' + mos.access_token
+					// step 3b.2 - update -filetype.json
+					let xpupdate = await xhrPromise({
+						url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-${filetype}.json`,
+						method: 'PUT',
+						restype: 'json',
+						data: JSON.stringify({
+							message: 'Update command ' + filetype,
+							content: btoa(JSON.stringify(pref_hotkey[filetype].content)),
+							sha: file_sha
+						}),
+						headers: {
+							Accept: 'application/vnd.github.v3+json',
+							Authorization: 'token ' + mos.access_token
+						}
+					});
+					console.log('xpupdate:', xpupdate);
+					if (xpupdate.xhr.status !== 200) {
+						throw 'Failed to do step "Pull Request Step 3b.2 - Update "${filetype}" File"';
+					} else {
+						let { content:{sha:file_sha}, commit:{sha:commit_sha} } = xpupdate.xhr.response;
+						delete new_pref_hotkey[filetype].base_file_sha;
+						new_pref_hotkey[filetype].file_sha = file_sha;
+						delete new_pref_hotkey[filetype].base_commit_sha;
+						new_pref_hotkey[filetype].commit_sha = commit_sha;
 					}
-				});
-				console.log('xpupdate_code:', xpupdate_code);
-				if (xpupdate_code.xhr.status !== 200) {
-					throw 'Failed to do step "Pull Request Step 3b.2 - Update Code File"';
-				} else {
-					let { commit:{sha} } = xpupdate_code.xhr.response;
-					delete new_pref_hotkey.code.base_commit_sha;
-					new_pref_hotkey.code.commit_sha = sha;
-				}
-			}
-
-			// is locale updated/not-shared?
-			if (!locale.commit_sha) {
-				// step 3b.1 get sha of -locale.json
-				let xpshalocale = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-locale.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
-				console.log('xpshalocale:', xpshalocale);
-				if (xpshalocale.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.3 - Get Locale File SHA"';
-				let locale_file_sha = xpshalocale.xhr.response.sha;
-
-				// step 3b.2 - update -code.json
-				let xpupdate_locale = await xhrPromise({
-					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-locale.json`,
-					method: 'PUT',
-					restype: 'json',
-					data: JSON.stringify({
-						message: 'Update command locale',
-						content: btoa(JSON.stringify(locale.content)),
-						sha: locale_file_sha
-					}),
-					headers: {
-						Accept: 'application/vnd.github.v3+json',
-						Authorization: 'token ' + mos.access_token
-					}
-				});
-				console.log('xpupdate_locale:', xpupdate_locale);
-				if (xpupdate_locale.xhr.status !== 200) {
-					throw 'Failed to do step "Pull Request Step 3b.4 - Update Locale File"';
-				} else {
-					let { commit:{sha} } = xpupdate_locale.xhr.response;
-					delete new_pref_hotkey.locale.base_commit_sha;
-					new_pref_hotkey.locale.commit_sha = sha;
 				}
 			}
 		}
@@ -927,6 +879,7 @@ let Controls = React.createClass({
 				combo: null,
 				locale: {
 					// commit_sha: null,
+					// file_sha: null,
 					content: {
 						'en-US': {
 							name: document.getElementById('name').value.trim(),
@@ -936,6 +889,7 @@ let Controls = React.createClass({
 				},
 				code: {
 					// commit_sha: null,
+					// file_sha: null,
 					content: {
 						exec: document.getElementById('code').value.trim()
 					}
@@ -953,33 +907,45 @@ let Controls = React.createClass({
 				let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
 
 				// test if anything changed - and if it wasnt, then take into newhotkey reference to it
-				['locale', 'code'].forEach(key => {
-					if (JSON.stringify(newhotkey[key].content) == JSON.stringify(pref_hotkey[key].content)) {
+				['locale', 'code'].forEach(filetype => {
+					if (JSON.stringify(newhotkey[filetype].content) == JSON.stringify(pref_hotkey[filetype].content)) {
 						// not changed, so even keep same reference
-						newhotkey[key] = pref_hotkey[key];
+						newhotkey[filetype] = pref_hotkey[filetype];
 					} else {
 						// changed
-						let { commit_sha, base_commit_sha } = pref_hotkey[key];
-						newhotkey[key].base_commit_sha = commit_sha || base_commit_sha; // note: base_commit_sha indicates it is pending share. can NEVER (well should never) have base_commit_sha AND commit_sha keys at the same time // i have || base_commit_sha in case the one it is based on was not yet shared
-						if (!newhotkey[key].base_commit_sha) delete newhotkey[key].base_commit_sha;
+						let { file_sha, base_file_sha, commit_sha, base_commit_sha } = pref_hotkey[filetype];
 
-						delete pref_hotkey[key].commit_sha; // if it has it // because edited, this commit_sha is no longer true to it
+						newhotkey[filetype].base_file_sha = file_sha || base_file_sha;
+						newhotkey[filetype].base_commit_sha = commit_sha || base_commit_sha;
+
+						if (!newhotkey[filetype].base_commit_sha) {
+							// so it was a never shared one
+							// so its value was set to undefined, so just delete it
+							delete newhotkey[filetype].base_commit_sha;
+							delete newhotkey[filetype].base_file_sha;
+						}
+
+						// if it has it // because edited, this sha is no longer true to it
+						delete pref_hotkey[filetype].commit_sha;
+						delete pref_hotkey[filetype].file_sha;
 						isreallyedited = true;
 					}
 				});
 
-				// if (isreallyedited) {
-				// 	// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
-				// 	for (let p in pref_hotkey) {
-				// 		if (['locale', 'code'].includes(p) === false) { // editables
-				// 			newhotkey[p] = pref_hotkey[p];
-				// 		}
-				// 	}
-				// }
+				if (isreallyedited) {
+					// if its not really edited, then this will never update it, so dont bother
+					// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
+					// like `enabled`, `combo`. `filename` is the same so no need to copy that
+					for (let p in pref_hotkey) {
+						if (['locale', 'code'].includes(p) === false) { // editables
+							newhotkey[p] = pref_hotkey[p];
+						}
+					}
+				}
 			}
 
 			// storageCall and dispatch if necessary (ie: not dispatching if `(isedit && !isreallyedited)` )
-			if (isedit && isreallyedited) {
+			if (isreallyedited) {
 				// pref_hotkeys[edit_pref_hotkey_ix] = newhotkey; // dont do this, we want to change the reference to the array entry, so we create new array below with .map
 				let newstg = {
 					...store.getState().stg,
