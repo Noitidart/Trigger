@@ -42,6 +42,18 @@ var nub = {
 				// mem are prefeixed with "mem_" - mem stands for extension specific "cookies"/"system memory"
 				// filesystem-like stuff is prefixied with "fs_"
 		mem_lastversion: '-1', // indicates not installed - the "last installed version"
+		mem_oauth: {},
+		pref_hotkeys: []
+	},
+	oauth: { // config
+		github: {
+			client_id: '588171458d360bdb2497',
+			client_secret: '8d877cf13e5647f93ad42c28436e33e29aa8aa9b',
+			redirect_uri: 'http://127.0.0.1/trigger_github',
+			scope: 'user repo',
+			dotname: 'login', // `dotid` and `dotname` are dot paths in the `mem_oauth` entry. `dotid` is meant to point to something that uniquely identifies that account across all accounts on that oauth service's web server
+			dotid: 'id'
+		}
 	}
 };
 formatNubPaths();
@@ -176,8 +188,8 @@ async function preinit() {
 				} else {
 					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
 					console.log('as not equal, am fetching exearrbuf');
-					// let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { responseType:'arraybuffer' })).response;
-					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { responseType:'arraybuffer' })).xhr.response;
+					// let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { restype:'arraybuffer' })).response;
+					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { restype:'arraybuffer' })).xhr.response;
 					// let exebinarystr = new TextDecoder('utf-8').decode(new Uint8Array(exearrbuf));
 					// let exebinarystr = Uint8ArrayToString(new Uint8Array(exearrbuf));
 					let exebinarystr = new TextDecoder('utf-8').decode(exearrbuf);
@@ -312,44 +324,145 @@ async function fetchData(aArg={}) {
 	return data;
 }
 
-function setFaking(aNewStatus) {
-	// aNewStatus - boolean; - true for on, false for off
-	switch (nub.browser.name) {
-		case 'firefox':
+// start - oauth stuff
+async function openAuthTab({ serviceid, dontopen }, aReportProgress) {
+	// does oauth authorization flow
+	// if dontopen is true, then it doesnt open the tab, just gives you the url
+	// Comm func
 
-				if (aNewStatus) {
-					let { pref_lat:lat, pref_lng:lng } = nub.stg;
-					let geojson = { location:{ lat, lng }, accuracy:4000 };
-					let geouri = 'data:,' + encodeURIComponent(JSON.stringify(geojson));
-					let xprefvals = { 'geo.wifi.uri':geouri, 'geo.provider.testing':true };
-					callInBootstrap('setXPrefs', { namevals:xprefvals } );
-				} else {
-					let xprefvals = { 'geo.wifi.uri':null, 'geo.provider.testing':null };
-					callInBootstrap('setXPrefs', { namevals:xprefvals });
-				}
+	let config = nub.oauth[serviceid];
 
+	// determine url for service
+	let url;
+	switch (serviceid) {
+		case 'github':
+				url = 'https://github.com/login/oauth/authorize?' + queryStringDom({
+					client_id: config.client_id,
+					redirect_uri: config.redirect_uri,
+					scope: config.scope,
+					state: 'trigger',
+					allow_signup: 'true'
+				});
 			break;
 		default:
-			throw new Error(nub.browser.name + ' browser not supported!')
+			throw 'Unsupported `serviceid` of "' + serviceid + '"'
 	}
 
-	// set badge
-	if (nub.platform.os != 'android') {
-		if (aNewStatus) {
-			chrome.browserAction.setBadgeText({text:chrome.i18n.getMessage('on')});
-			browserActionSetTitle(chrome.i18n.getMessage('browseraction_title_on'));
-		} else {
-			chrome.browserAction.setBadgeText({text:''});
-			browserActionSetTitle(chrome.i18n.getMessage('browseraction_title'));
-		}
-	} else {
-		if (aNewStatus) {
-			callInBootstrap('browserActionUpdate', { checked:true, checkable:true, name:chrome.i18n.getMessage('browseraction_title_on') });
-		} else {
-			callInBootstrap('browserActionUpdate', { checked:false, checkable:false, name:chrome.i18n.getMessage('browseraction_title') });
+	if (!dontopen) addTab(url)
+
+	return url;
+}
+
+async function oauthAuthorized({ serviceid, href, json }) {
+	// href's:
+		// github - http://127.0.0.1/trigger_github?code=924c82542a85ca8eb756&state=trigger
+
+	if (json && href) throw new Error('must only provide `href` OR `json`');
+
+	let params = json || queryStringDom(href);
+	let config = nub.oauth[serviceid];
+
+	console.log('params:', params);
+
+	switch (serviceid) {
+		case 'github': {
+			// need to get an access_token
+
+			let at = (await xhrPromise({ // access_token
+				url: 'https://github.com/login/oauth/access_token',
+				method: 'POST',
+				headers: { Accept: 'application/json' },
+				fdhdr: true,
+				restype: 'json',
+				data: {
+					client_id: config.client_id,
+					client_secret: config.client_secret,
+					code: params.code,
+					redirect_uri: config.redirect_uri,
+					state: params.state
+				}
+			})).xhr;
+
+			console.log('at.status:', at.status, 'at.response:', at.response);
+			// at.status: 200 at.response: Object { access_token: "e2d262becc9f1ff72b7f1be6fb35eda2b55…", token_type: "bearer", scope: "repo,user" }
+			if (at.status != 200) throw 'oauthAuthorized Error: Failed to get Github `access_token`, bad status code: ' + at.status;
+
+			// get user name and id
+			let ui = (await xhrPromise({ // user_info
+				url: 'https://api.github.com/user',
+				method: 'GET',
+				headers: { Accept: 'application/json', Authorization:'token ' + at.response.access_token },
+				fdhdr: true,
+				restype: 'json',
+				data: {
+					client_id: config.client_id,
+					client_secret: config.client_secret,
+					code: params.code,
+					redirect_uri: config.redirect_uri,
+					state: params.state
+				}
+			})).xhr;
+
+			console.log('ui.status:', ui.status, 'ui.response:', ui.response);
+			// ui.status: 200 ui.response: Object { access_token: "e2d262becc9f1ff72b7f1be6fb35eda2b55…", token_type: "bearer", scope: "repo,user" }
+			// Object { error: "bad_verification_code", error_description: "The code passed is incorrect or exp…", error_uri: "https://developer.github.com/v3/oau…" }
+			if (ui.status != 200) throw 'oauthAuthorized Error: Failed to get Github user information, bad status code: ' + ui.status;
+			if (ui.status == 200 && ui.response.error) throw 'oauthAuthorized Error: Failed to get Github user information due to error field in response: ' + ui.response.error;
+
+			let mi = {...at.response, id:ui.response.id, login:ui.response.login}; // meminfo_for_serviceid
+			console.log('mi:', mi);
+
+			nub.stg.mem_oauth[serviceid] = mi;
+			await storageCall('local', 'set', { mem_oauth:nub.stg.mem_oauth });
+
+			break;
 		}
 	}
 }
+
+function oauthWebRequestListener(detail) {
+	let { url, tabId:tabid, responseHeaders } = detail;
+
+	if (!url.startsWith('http://127.0.0.1/' + nub.self.chromemanifestkey + '_')) return;
+
+	console.error('oauthWebRequestListener, url:', url, 'detail:', detail);
+
+	let serviceid;
+	try {
+		serviceid = url.match(/127.0.0.1\/.*?_(.*?)\?/)[1];
+	} catch(ignore) {}
+
+	if (serviceid) {
+		oauthAuthorized({ serviceid, tabid, href:url});
+
+		tabid = (tabid === -1 || tabid === undefined || tabid === null) ? null : tabid;
+
+		let proc; // processing, endied, approved, error (if error i can provide parameter `msg`)
+		switch(serviceid) {
+			case 'github':
+					proc = 'processing';
+				break;
+			case 'twitter':
+					if (url.includes('denied=')) proc = 'denied';
+					else proc = 'processing'
+				break;
+			default:
+				if (url.includes('error=access_denied')) proc = 'denied';
+				else proc = 'approved';
+		}
+		let redirurl = nub.path.pages + 'auth.html?serviceid=' + serviceid + '&proc=' + proc;
+		console.log('redirurl:', redirurl);
+		if (tabid) setTimeout(()=>chrome.tabs.update(tabid, { url:redirurl }), 0); // needed for `onCommitted` - TODO: support android for controling load in this tab
+		return { cancel:true, redirectUrl:redirurl  };
+	}
+	else console.error('could not determine `serviceid` from url:', url);
+
+}
+
+browser.webRequest.onBeforeRequest.addListener(oauthWebRequestListener, { urls:['http://127.0.0.1/' + nub.self.chromemanifestkey + '_*'] }, ['blocking']); // catches when after user clicks on "Approve" it catches that redirect
+// browser.webNavigation.onBeforeNavigate.addListener(oauthWebRequestListener); // this does work, if i copy and paste the url to the bar like for url "http://127.0.0.1/trigger_github?code=d8f5a084e3f6da266050&state=trigger" // user never pastes in a tab, so i dont think its needed
+browser.webNavigation.onCommitted.addListener(oauthWebRequestListener); // when offline it works which is interesting. because when online it seems the request goes through in the back // catches when user goes to reauth page but is redirected immediately because they already had approved the app in the past
+// end - oauth stuff
 
 // start - polyfill for android
 function browserActionSetTitle(title) {
@@ -560,14 +673,27 @@ function formatNubPaths() {
 
 // rev1 - not yet committed
 function xhrPromise(url, opt={}) {
+
+	// three ways to call
+		// xhrPromise( {url, ...} )
+		// xhrPromise(url, {...})
+		// xhrPromise(undefined/null, {...})
+
+	if (typeof(url) == 'object' && url && url.constructor.name == 'Object') opt = url;
+
 	// set default options
-	opt = Object.assign({
-		responseType: 'text',
+	opt = {
+		restype: 'text',
 		method: 'GET',
 		data: undefined,
-		reject: true
-	}, opt);
-	if (opt.url) url = url;
+		headers: {},
+		// odd options
+		reject: true,
+		fdhdr: false, // stands for "Form Data Header" set to true if you want it to add Content-Type application/x-www-form-urlencoded
+		// overwrite with what devuser specified
+		...opt
+	};
+	if (opt.url) url = opt.url;
 
 	return new Promise( (resolve, reject) => {
 		let xhr = new XMLHttpRequest();
@@ -583,6 +709,7 @@ function xhrPromise(url, opt={}) {
 		        case 'abort':
 		        case 'error':
 		        case 'timeout':
+						console.error('ev:', ev);
 						if (opt.reject) reject({ xhr, reason:ev.type });
 						else resolve({ xhr, reason:ev.type });
 		            break;
@@ -595,14 +722,21 @@ function xhrPromise(url, opt={}) {
 		evf(m => xhr.addEventListener(m, handler, false));
 
 		xhr.open(opt.method, url, true);
-		xhr.responseType = opt.responseType;
+
+		xhr.responseType = opt.restype;
+
+		if (opt.fdhdr) opt.headers['Content-Type'] = 'application/x-www-form-urlencoded'
+		for (let h in opt.headers) xhr.setRequestHeader(h, opt.headers[h]);
+
+		if (typeof(opt.data) == 'object' && opt.data != null && opt.data.constructor.name == 'Object') opt.data = queryStringDom(opt.data);
+
 		xhr.send(opt.data);
 	});
 }
 
 function xhrSync(url, opt={}) {
 	const optdefault = {
-		// responseType: 'text', // DOMException [InvalidAccessError: "synchronous XMLHttpRequests do not support timeout and responseType."
+		// restype: 'text', // DOMException [InvalidAccessError: "synchronous XMLHttpRequests do not support timeout and responseType."
 		method: 'GET'
 	};
 	opt = Object.assign(optdefault, opt);
@@ -611,7 +745,7 @@ function xhrSync(url, opt={}) {
 
 	let xhreq = new XMLHttpRequest();
 	xhreq.open(opt.method, url, false);
-	// xhreq.responseType = opt.responseType;
+	// xhreq.restype = opt.restype;
 	xhreq.send();
 }
 
@@ -645,6 +779,114 @@ function Uint8ArrayToString(arr) {
     }
   }
   return s;
+}
+
+function queryStringDom(objstr, opts={}) {
+	// queryString using DOM capabilities, like `new URL`
+
+	// objstr can be obj or str
+	// if obj then it does stringify
+	// if str then it does parse. if str it should be a url
+
+	if (typeof(objstr) == 'string') {
+		// parse
+		// is a url?
+		let url;
+		try {
+			url = new URL(objstr);
+		} catch(ignore) {}
+
+		// if (url) objstr = objstr.substr(url.search(/[\?\#]/));
+		//
+		// if (objstr.startsWith('?')) objstr = objstr.substr(1);
+		// if (objstr.startsWith('#')) objstr = objstr.substr(1);
+
+		if (!url) throw new Error('Non-url not yet supported');
+
+		let ret = {};
+
+		let strs = [];
+		if (url.search) strs.push(url.search);
+		if (url.hash) strs.push(url.hash);
+		if (!strs.length) throw new Error('no search or hash on this url! ' + objstr);
+
+		strs.forEach(str => {
+			// taken from queryString 4.2.3 - https://github.com/sindresorhus/query-string/blob/3ba022410dbcff27404de090b33ce9b67768c139/index.js
+			str = str.trim().replace(/^(\?|#|&)/, '');
+			str.split('&').forEach(function (param) {
+				var parts = param.replace(/\+/g, ' ').split('=');
+				// Firefox (pre 40) decodes `%3D` to `=`
+				// https://github.com/sindresorhus/query-string/pull/37
+				var key = parts.shift();
+				var val = parts.length > 0 ? parts.join('=') : undefined;
+
+				key = decodeURIComponent(key);
+
+				// missing `=` should be `null`:
+				// http://w3.org/TR/2012/WD-url-20120524/#collect-url-parameters
+				val = val === undefined ? null : decodeURIComponent(val);
+
+				if (ret[key] === undefined) {
+					ret[key] = val;
+				} else if (Array.isArray(ret[key])) {
+					ret[key].push(val);
+				} else {
+					ret[key] = [ret[key], val];
+				}
+			});
+		});
+
+		return ret;
+	} else {
+		// stringify
+		// taken from queryString github release 4.2.3 but modified out the objectAssign for Object.assign and anded encode as strict-uri-encode - https://github.com/sindresorhus/query-string/blob/3ba022410dbcff27404de090b33ce9b67768c139/index.js
+		let objectAssign = Object.assign;
+		let encode = str => encodeURIComponent(str).replace(/[!'()*]/g, x => `%${x.charCodeAt(0).toString(16).toUpperCase()}`);
+		let obj = objstr;
+		// strict-uri-encode taken from - github release 2.0.0 - https://github.com/kevva/strict-uri-encode/blob/0b2dfae92f37618e1cb5f15911bb717e45b71385/index.js
+
+		// below
+		var defaults = {
+			encode: true,
+			strict: true
+		};
+
+		opts = objectAssign(defaults, opts);
+
+		return obj ? Object.keys(obj).sort().map(function (key) {
+			var val = obj[key];
+
+			if (val === undefined) {
+				return '';
+			}
+
+			if (val === null) {
+				return encode(key, opts);
+			}
+
+			if (Array.isArray(val)) {
+				var result = [];
+
+				val.slice().forEach(function (val2) {
+					if (val2 === undefined) {
+						return;
+					}
+
+					if (val2 === null) {
+						result.push(encode(key, opts));
+					} else {
+						result.push(encode(key, opts) + '=' + encode(val2, opts));
+					}
+				});
+
+				return result.join('&');
+			}
+
+			return encode(key, opts) + '=' + encode(val, opts);
+		}).filter(function (x) {
+			return x.length > 0;
+		}).join('&') : '';
+	}
 }
 // end - cmn
 

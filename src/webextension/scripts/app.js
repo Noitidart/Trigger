@@ -115,7 +115,8 @@ async function shouldUpdateHydrant() {
 let hydrant = {
 	stg: {
 		// set defaults here, as if it never has been set with `storageCall('storaget', 'set')` then `fetchData` will get back an empty object
-		pref_hotkeys: []
+		pref_hotkeys: [],
+		mem_oauth: {} // github, github_inactive
 	}
 };
 
@@ -169,6 +170,7 @@ function reloadPageIf(name) {
 		name
 	}
 }
+
 // REDUCERS
 function stg(state=hydrant.stg, action) {
 	switch (action.type) {
@@ -475,7 +477,7 @@ let Page = React.createClass({
 						);
 
 						setTimeout(async function() {
-							gCommunityXhr = (await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/contents', { reject:false })).xhr;
+							gCommunityXhr = (await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/contents')).xhr;
 							reload('community');
 						}, 0);
 					} else {
@@ -580,7 +582,7 @@ let Hotkey = React.createClass({
 		}));
 
 		let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
-		callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals })
+		callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
 	},
 	edit(e) {
 		if (!stopClickAndCheck0(e)) return;
@@ -596,6 +598,11 @@ let Hotkey = React.createClass({
 				}
 			}
 		));
+	},
+	share(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+
 	},
 	render() {
 		let { pref_hotkey } = this.props;
@@ -685,6 +692,7 @@ let HotkeyAdd = React.createClass({
 
 let Controls = React.createClass({
 	displayName: 'Controls',
+	// for page edit_hotkey and create_hotkey
 	saveHotkey(e) {
 		let { editing, page_history } = this.props; // mapped state
 		let isvalid = (editing && editing.isvalid);
@@ -783,6 +791,30 @@ let Controls = React.createClass({
 			}
 		}
 	},
+	// for page my_hotkeys
+	oauthAddForget(serviceid) {
+		let { oauth } = this.props; // mapped state
+		if (oauth[serviceid]) {
+			// forget
+			let state = store.getState();
+			let newstg = {
+				...state.stg,
+				mem_oauth: { ...state.stg.mem_oauth }
+			};
+			delete newstg.mem_oauth[serviceid];
+
+			store.dispatch(setMainKeys({
+				stg: newstg
+			}));
+
+			let stgvals = { mem_oauth:newstg.mem_oauth };
+			callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
+		} else {
+			// add
+			callInBackground('openAuthTab', { serviceid });
+		}
+	},
+	//
 	render() {
 		let { page_history } = this.props; // mapped state
 		let { back } = this.props; // dispatchers
@@ -793,7 +825,28 @@ let Controls = React.createClass({
 		// meat
 		switch (page) {
 			case 'my_hotkeys':
+					let { oauth } = this.props; // mapped state
+
 					rels.push('Manage your collection of hotkeys here. You can browse the community shared commands by click "Add" and then "Community". You can create your own custom commands and share it with the community.');
+					rels.push(React.createElement('br'));
+					rels.push(React.createElement('br'));
+					for (let serviceid in nub.oauth) {
+						rels.push(
+							React.createElement('div', { className:'row text-center' },
+								React.createElement('div', { className:'col-lg-12' },
+									React.createElement('img', { src:'../images/' + serviceid + '.png', width:'22px', height:'22px', className:'pull-left' }),
+									React.createElement('span', { className:'pull-left', style:oauth[serviceid] ? undefined : {fontStyle:'italic'} },
+										!oauth[serviceid] ? '(no account)' : deepAccessUsingString(oauth[serviceid], nub.oauth[serviceid].dotname)
+									),
+									React.createElement('a', { href:'#', className:'btn btn-default btn-sm pull-right', onClick:this.oauthAddForget.bind(null, serviceid) },
+										React.createElement('span', { className:'glyphicon glyphicon-' + (oauth[serviceid] ? 'minus-sign' : 'plus-sign') }),
+										' ',
+										oauth[serviceid] ? 'Forget Account' : 'Authorize Account'
+									)
+								)
+							)
+						);
+					}
 				break;
 			case 'create_hotkey':
 			case 'edit_hotkey':
@@ -875,7 +928,8 @@ let ControlsContainer = ReactRedux.connect(
 	function(state, ownProps) {
 		return {
 			page_history: state.page_history,
-			editing: state.editing
+			editing: state.editing,
+			oauth: state.stg.mem_oauth
 		}
 	},
 	function(dispatch, ownProps) {
@@ -938,15 +992,27 @@ function stopClickAndCheck0(e) {
 
 // rev1 - not yet committed
 function xhrPromise(url, opt={}) {
+
+	// three ways to call
+		// xhrPromise( {url, ...} )
+		// xhrPromise(url, {...})
+		// xhrPromise(undefined/null, {...})
+
+	if (typeof(url) == 'object' && url && url.constructor.name == 'Object') opt = url;
+
 	// set default options
 	opt = {
-		responseType: 'text',
+		restype: 'text',
 		method: 'GET',
 		data: undefined,
+		headers: {},
+		// odd options
 		reject: true,
+		fdhdr: false, // stands for "Form Data Header" set to true if you want it to add Content-Type application/x-www-form-urlencoded
+		// overwrite with what devuser specified
 		...opt
 	};
-	if (opt.url) url = url;
+	if (opt.url) url = opt.url;
 
 	return new Promise( (resolve, reject) => {
 		let xhr = new XMLHttpRequest();
@@ -962,6 +1028,7 @@ function xhrPromise(url, opt={}) {
 		        case 'abort':
 		        case 'error':
 		        case 'timeout':
+						console.error('ev:', ev);
 						if (opt.reject) reject({ xhr, reason:ev.type });
 						else resolve({ xhr, reason:ev.type });
 		            break;
@@ -974,7 +1041,14 @@ function xhrPromise(url, opt={}) {
 		evf(m => xhr.addEventListener(m, handler, false));
 
 		xhr.open(opt.method, url, true);
-		xhr.responseType = opt.responseType;
+
+		xhr.responseType = opt.restype;
+
+		if (opt.fdhdr) opt.headers['Content-Type'] = 'application/x-www-form-urlencoded'
+		for (let h in opt.headers) xhr.setRequestHeader(h, opt.headers[h]);
+
+		if (typeof(opt.data) == 'object' && opt.data != null && opt.data.constructor.name == 'Object') opt.data = queryStringDom(opt.data);
+
 		xhr.send(opt.data);
 	});
 }
@@ -1023,4 +1097,14 @@ function objectAssignDeep(target, source) {
 	return output;
 
 };
+
+function deepAccessUsingString(obj, key){
+	// https://medium.com/@chekofif/using-es6-s-proxy-for-safe-object-property-access-f42fa4380b2c#.xotsyhx8t
+  return key.split('.').reduce((nestedObject, key) => {
+    if(nestedObject && key in nestedObject) {
+      return nestedObject[key];
+    }
+    return undefined;
+  }, obj);
+}
 // end - cmn
