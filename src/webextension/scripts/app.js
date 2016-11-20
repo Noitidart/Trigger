@@ -248,7 +248,7 @@ let app = Redux.combineReducers({
 	// localized name and description are in filename_locale.js
 	locale: {
 		// remote meta data
-		sha: ''
+		commit_sha: ''
 		content: `
 			'en-US': {
 				name: ''
@@ -258,7 +258,7 @@ let app = Redux.combineReducers({
 	},
 	code: [ // local has this too, but it will only have one entry
 		{
-			sha: ''
+			commit_sha: ''
 			// remote meta data
 			// filecontents is like this:
 			content: ''
@@ -283,7 +283,7 @@ let App = React.createClass({
 	}
 });
 
-let gCommunityXhr;
+let gXPCommunity;
 let Page = React.createClass({
 	displayName: 'Page',
 	// functions for create_hotkey and edit_hotkey pages
@@ -464,7 +464,7 @@ let Page = React.createClass({
 				break;
 			}
 			case 'community': {
-					if (!gCommunityXhr) {
+					if (!gXPCommunity) {
 						rels.push(
 							React.createElement('div', { className:'row text-center' },
 								React.createElement('button', { className:'btn btn-lg btn-default no-btn' },
@@ -476,28 +476,25 @@ let Page = React.createClass({
 						);
 
 						setTimeout(async function() {
-							gCommunityXhr = (await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/contents')).xhr;
+							gXPCommunity = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/contents', { restype:'json' });
+							console.log('gXPCommunity:', gXPCommunity);
 							reload('community');
 						}, 0);
 					} else {
-						let xhr = gCommunityXhr;
-						gCommunityXhr = undefined;
+						let { xhr:{status, response} } = gXPCommunity;
+						gXPCommunity = undefined;
 
-						let json;
-						try {
-							json = JSON.parse(xhr.response);
-						} catch(ex) {
-							console.warn('no json returned in xhr');
-							json = {};
-						}
-						console.log('json:', json, 'xhr:', xhr);
-
-						switch (xhr.status) {
+						switch (status) {
 							case 200: {
-								switch (json.message) {
-									default:
-
-								}
+								rels.push(
+									React.createElement('div', { className:'row text-center' },
+										'Loaded to community,',
+										React.createElement('br'),
+										React.createElement('br'),
+										JSON.stringify(response)
+									)
+								);
+								break;
 							}
 							default:
 								rels.push(
@@ -508,10 +505,10 @@ let Page = React.createClass({
 										React.createElement('dl', undefined,
 											React.createElement('dt', undefined,
 												React.createElement('dd', undefined,
-													'Status Code: ' + xhr.status
+													'Status Code: ' + status
 												),
 												React.createElement('dd', undefined,
-													'Response: ' + xhr.response
+													'Response: ' + JSON.stringify(response)
 												)
 											)
 										)
@@ -648,7 +645,7 @@ let Hotkey = React.createClass({
 			// never shared yet
 			prtitle = 'Add new command';
 
-			// step 3.1
+			// step 3a.1
 			// check if filename exists - so getting avaialble filename as newfilename
 			// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
 			let newfilename = filename.substr(1);
@@ -661,7 +658,7 @@ let Hotkey = React.createClass({
 			}
 			new_pref_hotkey.filename = newfilename;
 
-			// step 3.2 - create code file
+			// step 3a.2 - create code file
 			let xpcreate_code = await xhrPromise({
 				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`,
 				method: 'PUT',
@@ -677,14 +674,14 @@ let Hotkey = React.createClass({
 			});
 			console.log('xpcreate_code:', xpcreate_code);
 			if (xpcreate_code.xhr.status !== 201) {
-				throw 'Failed to do step "Pull Request Step 3.2 - Create Code File"';
+				throw 'Failed to do step "Pull Request Step 3a.2 - Create Code File"';
 			} else {
-				let { content:{sha} } = xpcreate_code.xhr.response;
-				// delete new_pref_hotkey.code.base_sha; // doesnt have base_sha as this is "never shared yet"
-				new_pref_hotkey.code.sha = sha;
+				let { commit:{sha} } = xpcreate_code.xhr.response;
+				// delete new_pref_hotkey.code.base_commit_sha; // doesnt have base_commit_sha as this is "never shared yet"
+				new_pref_hotkey.code.commit_sha = sha;
 			}
 
-			// step 3.3 - create locale file
+			// step 3a.3 - create locale file
 			let xpcreate_locale = await xhrPromise({
 				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-locale.json`,
 				method: 'PUT',
@@ -700,32 +697,88 @@ let Hotkey = React.createClass({
 			});
 			console.log('xpcreate_locale:', xpcreate_locale);
 			if (xpcreate_locale.xhr.status !== 201) {
-				throw 'Failed to do step "Pull Request Step 3.3 - Create Locale File"';
+				throw 'Failed to do step "Pull Request Step 3a.3 - Create Locale File"';
 			} else {
-				let { content:{sha} } = xpcreate_locale.xhr.response;
-				// delete new_pref_hotkey.locale.base_sha; // doesnt have base_sha as this is "never shared yet"
-				new_pref_hotkey.locale.sha = sha;
+				let { commit:{sha} } = xpcreate_locale.xhr.response;
+				// delete new_pref_hotkey.locale.base_commit_sha; // doesnt have base_commit_sha as this is "never shared yet"
+				new_pref_hotkey.locale.commit_sha = sha;
 			}
 		} else {
 			// update file
 
-			// get sha of filename-code.json and filename-locale.json
-			// `https://api.github.com/repos/noitdev/testapi/contents/${filename}-code.json`
-
-			// TODO:
-			// prtitle = "Update command locale"
-			// prtitle = "Update command code"
-			// prtitle = "Update command code and locale"
-
-			// updating file is same like creating just need sha in there - send string not formdata
-			// https://api.github.com/repos/noitdev/testapi/contents/filename-code.json
-			/*
-			{
-			  "message": "updating file",
-			  "content": "MnggUkFXUg==",
-			  "sha": "0c0fd25dfe67e6bf54ea3aad49dac1d8113d8aa8"
+			if (!code.commit_sha && !locale.commit_sha) {
+				prtitle = 'Update command code and locale'
+			} else if (!code.commit_sha) {
+				prtitle = 'Update command code'
+			} else {
+				prtitle = 'Update command locale'
 			}
-			*/
+
+			// is code updated/not-shared?
+			if (!code.commit_sha) {
+				// step 3b.1 get sha of -code.json
+				let xpshacode = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-code.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+				console.log('xpshacode:', xpshacode);
+				if (xpshacode.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get Code File SHA"';
+				let code_file_sha = xpshacode.xhr.response.sha;
+
+				// step 3b.2 - update -code.json
+				let xpupdate_code = await xhrPromise({
+					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-code.json`,
+					method: 'PUT',
+					restype: 'json',
+					data: JSON.stringify({
+						message: 'Update command code',
+						content: btoa(JSON.stringify(code.content)),
+						sha: code_file_sha
+					}),
+					headers: {
+						Accept: 'application/vnd.github.v3+json',
+						Authorization: 'token ' + mos.access_token
+					}
+				});
+				console.log('xpupdate_code:', xpupdate_code);
+				if (xpupdate_code.xhr.status !== 200) {
+					throw 'Failed to do step "Pull Request Step 3b.2 - Update Code File"';
+				} else {
+					let { commit:{sha} } = xpupdate_code.xhr.response;
+					delete new_pref_hotkey.code.base_commit_sha;
+					new_pref_hotkey.code.commit_sha = sha;
+				}
+			}
+
+			// is locale updated/not-shared?
+			if (!locale.commit_sha) {
+				// step 3b.1 get sha of -locale.json
+				let xpshalocale = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-locale.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+				console.log('xpshalocale:', xpshalocale);
+				if (xpshalocale.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.3 - Get Locale File SHA"';
+				let locale_file_sha = xpshalocale.xhr.response.sha;
+
+				// step 3b.2 - update -code.json
+				let xpupdate_locale = await xhrPromise({
+					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-locale.json`,
+					method: 'PUT',
+					restype: 'json',
+					data: JSON.stringify({
+						message: 'Update command locale',
+						content: btoa(JSON.stringify(locale.content)),
+						sha: locale_file_sha
+					}),
+					headers: {
+						Accept: 'application/vnd.github.v3+json',
+						Authorization: 'token ' + mos.access_token
+					}
+				});
+				console.log('xpupdate_locale:', xpupdate_locale);
+				if (xpupdate_locale.xhr.status !== 200) {
+					throw 'Failed to do step "Pull Request Step 3b.4 - Update Locale File"';
+				} else {
+					let { commit:{sha} } = xpupdate_locale.xhr.response;
+					delete new_pref_hotkey.locale.base_commit_sha;
+					new_pref_hotkey.locale.commit_sha = sha;
+				}
+			}
 		}
 
 		// step 4 - create pull request
@@ -789,9 +842,9 @@ let Hotkey = React.createClass({
 		}
 
 		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
-		// cant use `locale.sha` and `code.sha` to determine `islocal`, as it might be edited and not yet shared
+		// cant use `locale.commit_sha` and `code.commit_sha` to determine `islocal`, as it might be edited and not yet shared
 
-		let isshared = (!islocal && locale.sha && code.sha);
+		let isshared = (!islocal && locale.commit_sha && code.commit_sha);
 
 		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
 
@@ -873,7 +926,7 @@ let Controls = React.createClass({
 				filename: editing.filename,
 				combo: null,
 				locale: {
-					sha: null,
+					// commit_sha: null,
 					content: {
 						'en-US': {
 							name: document.getElementById('name').value.trim(),
@@ -882,7 +935,7 @@ let Controls = React.createClass({
 					}
 				},
 				code: {
-					sha: null,
+					// commit_sha: null,
 					content: {
 						exec: document.getElementById('code').value.trim()
 					}
@@ -905,19 +958,24 @@ let Controls = React.createClass({
 						// not changed, so even keep same reference
 						newhotkey[key] = pref_hotkey[key];
 					} else {
-						newhotkey[key].base_sha = pref_hotkey[key].sha || pref_hotkey[key].base_sha; // base_sha indicates it is pending share
+						// changed
+						let { commit_sha, base_commit_sha } = pref_hotkey[key];
+						newhotkey[key].base_commit_sha = commit_sha || base_commit_sha; // note: base_commit_sha indicates it is pending share. can NEVER (well should never) have base_commit_sha AND commit_sha keys at the same time // i have || base_commit_sha in case the one it is based on was not yet shared
+						if (!newhotkey[key].base_commit_sha) delete newhotkey[key].base_commit_sha;
+
+						delete pref_hotkey[key].commit_sha; // if it has it // because edited, this commit_sha is no longer true to it
 						isreallyedited = true;
 					}
 				});
 
-				if (isreallyedited) {
-					// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
-					for (let p in pref_hotkey) {
-						if (['locale', 'code'].includes(p) === false) { // editables
-							newhotkey[p] = pref_hotkey[p];
-						}
-					}
-				}
+				// if (isreallyedited) {
+				// 	// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
+				// 	for (let p in pref_hotkey) {
+				// 		if (['locale', 'code'].includes(p) === false) { // editables
+				// 			newhotkey[p] = pref_hotkey[p];
+				// 		}
+				// 	}
+				// }
 			}
 
 			// storageCall and dispatch if necessary (ie: not dispatching if `(isedit && !isreallyedited)` )
