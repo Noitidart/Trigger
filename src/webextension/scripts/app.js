@@ -245,24 +245,22 @@ let app = Redux.combineReducers({
 	combo: [], // remote_htk does not have
 	filename: '', // generated based on filename's available on server // just a random hash // if not yet verified with server (meaning not yet shared) this is prefexed with `_`
 	// code is in filename_code.js
-	// localized name and description are in filename_locale.js
-	locale: {
-		commit_sha
-		file_sha
-		content: `
-			'en-US': {
-				name: ''
-				description: ''
+	command: {
+		file_sha, // not there if edited & unshared edits
+		base_file_sha, // only there if edited & unshared edits
+		changes_since_base: ['group', 'locale', 'code'] // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
+		content: {
+			group:
+			locale: {
+				'en-US': {
+					name, description
+				}
+			},
+			code: {
+				exec // in future, maybe `init, uninit`
 			}
-		`
-	},
-	code: [ // local has this too, but it will only have one entry
-		{
-			commit_sha
-			file_sha
-			content: ''
 		}
-	]
+	}
 }
 */
 
@@ -282,7 +280,7 @@ let App = React.createClass({
 	}
 });
 
-let gXPCommunity;
+let gCommunityData;
 let Page = React.createClass({
 	displayName: 'Page',
 	// functions for create_hotkey and edit_hotkey pages
@@ -306,6 +304,23 @@ let Page = React.createClass({
 				}
 			}));
 		}
+	},
+	revertCode(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { editing:{filename}, pref_hotkeys } = this.props;
+
+		let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
+		let { command:{content:{code:{exec:code}}} } = pref_hotkey;
+
+		document.getElementById('code').value = code;
+	},
+	beautifyCode(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let elcode = document.getElementById('code');
+		let js = elcode.value;
+		callInBootstrap('beautifyText', { js }, beautified => elcode.value = beautified);
 	},
 	// functions for add_hotkey pages
 	loadCreateHotkey(e) {
@@ -393,50 +408,65 @@ let Page = React.createClass({
 					let { editing, pref_hotkeys } = this.props; // mapped state
 
 					let locale = 'en-US'; // TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
-					let name, description, code;
+					let name, description, code, group;
 					if (page == 'edit_hotkey') {
 						// obviously isedit = true
 						// let isedit = !!pref_hotkey;
 						let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
-						name = pref_hotkey.locale.content[locale].name;
-						description = pref_hotkey.locale.content[locale].description;
-						code = pref_hotkey.code.content.exec;
+						name = pref_hotkey.command.content.locale[locale].name;
+						description = pref_hotkey.command.content.locale[locale].description;
+						code = pref_hotkey.command.content.code.exec;
+						group = pref_hotkey.command.content.group;
 					}
 
 					rels.push(
 						React.createElement('form', undefined,
+							// React.createElement('div', { className:'input-group' },
+							// 	React.createElement('span', { className:'input-group-addon' },
+							// 		'Language'
+							// 	),
+							// 	React.createElement('input', { className:'form-control' }),
+							// 	// React.createElement('div', { className:'input-group-btn open' },
+							// 	React.createElement('div', { className:'input-group-btn' },
+							// 		React.createElement('button', { type:'button', className:'btn btn-default dropdown-toggle' },
+							// 			'English',
+							// 			' ',
+							// 			React.createElement('span', { className:'caret' })
+							// 		),
+							// 		React.createElement('ul', { className:'dropdown-menu dropdown-menu-right' },
+							// 			React.createElement('li', undefined,
+							// 				React.createElement('div', { className:'input-group input-group-sm', style:{margin:'0 auto'} },
+							// 					React.createElement('input', { className:'form-control', type:'text', disabled:'disabled', id:'locale' })
+							// 				)
+							// 			),
+							// 			React.createElement('li', { className:'divider' } ),
+							// 			React.createElement('li', undefined,
+							// 				React.createElement('a', { href:'#' },
+							// 					'French'
+							// 				)
+							// 			),
+							// 			React.createElement('li', undefined,
+							// 				React.createElement('a', { href:'#' },
+							// 					'Spanish'
+							// 				)
+							// 			)
+							// 		)
+							// 	)
+							// ),
+
+							React.createElement('br'),
 							React.createElement('div', { className:'input-group' },
 								React.createElement('span', { className:'input-group-addon' },
 									'Language'
 								),
-								React.createElement('input', { className:'form-control' }),
-								// React.createElement('div', { className:'input-group-btn open' },
-								React.createElement('div', { className:'input-group-btn' },
-									React.createElement('button', { type:'button', className:'btn btn-default dropdown-toggle' },
-										'English',
-										' ',
-										React.createElement('span', { className:'caret' })
-									),
-									React.createElement('ul', { className:'dropdown-menu dropdown-menu-right' },
-										React.createElement('li', undefined,
-											React.createElement('div', { className:'input-group input-group-sm', style:{margin:'0 auto'} },
-												React.createElement('input', { className:'form-control', type:'text', disabled:'disabled', id:'language' })
-											)
-										),
-										React.createElement('li', { className:'divider' } ),
-										React.createElement('li', undefined,
-											React.createElement('a', { href:'#' },
-												'French'
-											)
-										),
-										React.createElement('li', undefined,
-											React.createElement('a', { href:'#' },
-												'Spanish'
-											)
-										)
+								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
+								React.createElement('select', { className:'form-control', id:'locale', onChange:this.validateForm, defaultValue:locale },
+									React.createElement('option', { value:'en-US' },
+										'English'
 									)
 								)
 							),
+
 							React.createElement('br'),
 							React.createElement('div', { className:'input-group' },
 								React.createElement('span', { className:'input-group-addon' },
@@ -444,26 +474,60 @@ let Page = React.createClass({
 								),
 								React.createElement('input', { className:'form-control', type:'text', id:'name', onChange:this.validateForm, defaultValue:name }),
 							),
+
 							React.createElement('br'),
 							React.createElement('div', { className:'input-group' },
 								React.createElement('span', { className:'input-group-addon' },
 									'Description'
 								),
-								React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description }),
+								React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description })
 							),
+
 							React.createElement('br'),
-							React.createElement('b', undefined,
-								'Command (Javascript)'
+							React.createElement('div', { className:'input-group' },
+								React.createElement('span', { className:'input-group-addon' },
+									'Group'
+								),
+								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
+								React.createElement('select', { className:'form-control', id:'group', onChange:this.validateForm, defaultValue:group },
+									React.createElement('option', { value:'0' },
+										'Uncategorized'
+									),
+									React.createElement('option', { value:'1' },
+										'Tabs'
+									),
+									React.createElement('option', { value:'2' },
+										'Website'
+									)
+								)
 							),
-							React.createElement('div', { className:'form-group' },
-								React.createElement('textarea', { className:'form-control', id:'code', onChange:this.validateForm, defaultValue:code, style:{resize:'vertical'} })
+
+							React.createElement('br'),
+							React.createElement('div', { className:'input-group' },
+								React.createElement('span', { className:'input-group-addon', style:{verticalAlign:'top', paddingTop:'9px'} },
+									'Code',
+									React.createElement('br'),
+									React.createElement('br'),
+									React.createElement('div', { className:'btn-group' },
+										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Beautify', onClick:this.beautifyCode },
+											React.createElement('span', { className:'glyphicon glyphicon-console' })
+										),
+										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Revert', onClick:this.revertCode },
+											React.createElement('span', { className:'glyphicon glyphicon-repeat' })
+										)
+									)
+								),
+								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
+								React.createElement('div', { className:'form-group' },
+									React.createElement('textarea', { className:'form-control', id:'code', onChange:this.validateForm, defaultValue:code, style:{resize:'vertical',minHeight:'100px'} })
+								)
 							)
 						)
 					);
 				break;
 			}
 			case 'community': {
-					if (!gXPCommunity) {
+					if (!gCommunityData) {
 						rels.push(
 							React.createElement('div', { className:'row text-center' },
 								React.createElement('button', { className:'btn btn-lg btn-default no-btn' },
@@ -475,44 +539,75 @@ let Page = React.createClass({
 						);
 
 						setTimeout(async function() {
-							gXPCommunity = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/contents', { restype:'json' });
-							console.log('gXPCommunity:', gXPCommunity);
+							let xpcommunity = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/git/trees/master', { restype:'json' });
+							console.log('xpcommunity:', xpcommunity);
+							if (xpcommunity.xhr.status !== 200) {
+								gCommunityData = { errorxhr:xpcommunity.xhr }
+								reload('community');
+								return;
+							}
+
+							let hotkeys_tree = [];
+							// entry: { hotkey: HotkeyStruct, code_history } // locale is always up to date
+							let { tree } = xpcommunity.xhr.response;
+
+							// get contents of each file in tree
+							for (let {path} of tree) {
+								if (!path.endsWith('.json')) continue;
+								let filename = path.substr(0, path.indexOf('.json'));
+
+								// hotkeys_tree.push({
+								// 	hotkey: {
+								// 		enabled: undefined,
+								// 		combo: undefined,
+								// 		filename,
+								// 		locale: {
+								// 			file_sha:
+								// 		},
+								// 		code:
+								// 	}
+								// });
+							}
+
 							reload('community');
 						}, 0);
 					} else {
-						let { xhr:{status, response} } = gXPCommunity;
-						gXPCommunity = undefined;
+						let { errorxhr, hotkeys_tree } = gCommunityData;
+						gCommunityData = undefined;
 
-						switch (status) {
-							case 200: {
-								rels.push(
-									React.createElement('div', { className:'row text-center' },
-										'Loaded to community,',
-										React.createElement('br'),
-										React.createElement('br'),
-										JSON.stringify(response)
-									)
-								);
-								break;
-							}
-							default:
-								rels.push(
-									React.createElement('div', { className:'row text-center' },
-										'Failed to connect to community.',
-										React.createElement('br'),
-										React.createElement('br'),
-										React.createElement('dl', undefined,
-											React.createElement('dt', undefined,
-												React.createElement('dd', undefined,
-													'Status Code: ' + status
-												),
-												React.createElement('dd', undefined,
-													'Response: ' + JSON.stringify(response)
+						if (errorxhr) {
+							let { status, response } = errorxhr;
+							switch (status) {
+								case 200: {
+									rels.push(
+										React.createElement('div', { className:'row text-center' },
+											'Loaded to community,',
+											React.createElement('br'),
+											React.createElement('br'),
+											JSON.stringify(response)
+										)
+									);
+									break;
+								}
+								default:
+									rels.push(
+										React.createElement('div', { className:'row text-center' },
+											'Failed to connect to community.',
+											React.createElement('br'),
+											React.createElement('br'),
+											React.createElement('dl', undefined,
+												React.createElement('dt', undefined,
+													React.createElement('dd', undefined,
+														'Status Code: ' + status
+													),
+													React.createElement('dd', undefined,
+														'Response: ' + JSON.stringify(response)
+													)
 												)
 											)
 										)
-									)
-								);
+									);
+							}
 						}
 					}
 				break;
@@ -598,7 +693,7 @@ let Hotkey = React.createClass({
 		if (!stopClickAndCheck0(e)) return;
 
 		let { pref_hotkey } = this.props;
-		let { filename, locale, code } = pref_hotkey;
+		let { filename, command:{group, locale, code} } = pref_hotkey;
 
 		let state = store.getState();
 
@@ -638,9 +733,10 @@ let Hotkey = React.createClass({
 			else throw 'Failed to do step "Pull Request Step 2.1 - Wait Fork Finish"';
 		});
 
-		// step 3 - create/update -code and -locale files
+		// step 3 - create/update file
 		let prtitle;
 		if (filename.startsWith('_')) {
+		// if (pref_hotkey.file_sha) 'No changes made! actually it can be new one created' THAT's why i prefix with `_` instead of `if (!pref_hotkey.base_file_sha && !pref_hotkey.file_sha)` // NOTE:
 			// never shared yet
 			prtitle = 'Add new command';
 
@@ -657,79 +753,67 @@ let Hotkey = React.createClass({
 			}
 			new_pref_hotkey.filename = newfilename;
 
-			// step 3a.2 - create code & locale file
-			for (let filetype of ['code', 'locale']) {
-				let xpcreate = await xhrPromise({
-					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-${filetype}.json`,
-					method: 'PUT',
-					restype: 'json',
-					data: JSON.stringify({
-						message: 'Add new command ' + filetype,
-						content: btoa(JSON.stringify(pref_hotkey[filetype].content))
-					}),
-					headers: {
-						Accept: 'application/vnd.github.v3+json',
-						Authorization: 'token ' + mos.access_token
-					}
-				});
-				console.log('xpcreate:', xpcreate);
-				if (xpcreate.xhr.status !== 201) {
-					throw 'Failed to do step "Pull Request Step 3a.2 - Create "${filetype}" File"';
-				} else {
-					let { content:{sha:file_sha}, commit:{sha:commit_sha} } = xpcreate.xhr.response;
-					// delete new_pref_hotkey[filetype].base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
-					new_pref_hotkey[filetype].file_sha = file_sha;
-					// delete new_pref_hotkey[filetype].base_commit_sha; // doesnt have base_commit_sha as this is "never shared yet"
-					new_pref_hotkey[filetype].commit_sha = commit_sha;
+			// step 3a.2 - create file
+			let xpcreate = await xhrPromise({
+				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
+				method: 'PUT',
+				restype: 'json',
+				data: JSON.stringify({
+					message: 'Add new command',
+					content: btoa(JSON.stringify(pref_hotkey.command.content))
+				}),
+				headers: {
+					Accept: 'application/vnd.github.v3+json',
+					Authorization: 'token ' + mos.access_token
 				}
+			});
+			console.log('xpcreate:', xpcreate);
+			if (xpcreate.xhr.status !== 201) {
+				throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
+			} else {
+				let { content:{sha:file_sha} } = xpcreate.xhr.response;
+				// delete new_pref_hotkey.command.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
+				// delete new_pref_hotkey.command.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
+				new_pref_hotkey.command.file_sha = file_sha;
 			}
 		} else {
 			// update file
 
-			if (!code.commit_sha && !locale.commit_sha) {
-				prtitle = 'Update command code and locale';
-			} else if (!code.commit_sha) {
-				prtitle = 'Update command code';
-			} else {
-				prtitle = 'Update command locale';
-			}
+			if (!pref_hotkey.command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
 
-			// check if filetype (code || locale) is shared and if it isnt then share it
-			for (let filetype of ['code', 'locale']) {
-				if (!pref_hotkey[filetype].commit_sha) {
-					// step 3b.1 get sha of -filetype.json
-					let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-${filetype}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
-					console.log('xpsha:', xpsha);
-					if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filetype}" File SHA"';
-					let file_sha = xpsha.xhr.response.sha;
-					// let file_sha = pref_hotkey[filetype].base_file_sha; // TODO: this is experiement, see how it affects it
+			prtitle = 'Update command ' + pref_hotkey.command.changes_since_base.join(' and '); // link98393 NOTE: keep `changes_since_base` always sorted when do `saveHotkey`
 
-					// step 3b.2 - update -filetype.json
-					let xpupdate = await xhrPromise({
-						url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-${filetype}.json`,
-						method: 'PUT',
-						restype: 'json',
-						data: JSON.stringify({
-							message: 'Update command ' + filetype,
-							content: btoa(JSON.stringify(pref_hotkey[filetype].content)),
-							sha: file_sha
-						}),
-						headers: {
-							Accept: 'application/vnd.github.v3+json',
-							Authorization: 'token ' + mos.access_token
-						}
-					});
-					console.log('xpupdate:', xpupdate);
-					if (xpupdate.xhr.status !== 200) {
-						throw 'Failed to do step "Pull Request Step 3b.2 - Update "${filetype}" File"';
-					} else {
-						let { content:{sha:file_sha}, commit:{sha:commit_sha} } = xpupdate.xhr.response;
-						delete new_pref_hotkey[filetype].base_file_sha;
-						new_pref_hotkey[filetype].file_sha = file_sha;
-						delete new_pref_hotkey[filetype].base_commit_sha;
-						new_pref_hotkey[filetype].commit_sha = commit_sha;
-					}
+			// step 3b.1 get sha of -filetype.json
+			let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-${filetype}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+			console.log('xpsha:', xpsha);
+			if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filetype}" File SHA"';
+			let master_file_sha = xpsha.xhr.response.sha;
+			// let base_file_sha = pref_hotkey.command.base_file_sha;
+			let use_file_sha = master_file_sha; // TODO: this is experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
+
+			// step 3b.2 - update file
+			let xpupdate = await xhrPromise({
+				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
+				method: 'PUT',
+				restype: 'json',
+				data: JSON.stringify({
+					message: prtitle,
+					content: btoa(JSON.stringify(pref_hotkey[filetype].content)),
+					sha: use_file_sha
+				}),
+				headers: {
+					Accept: 'application/vnd.github.v3+json',
+					Authorization: 'token ' + mos.access_token
 				}
+			});
+			console.log('xpupdate:', xpupdate);
+			if (xpupdate.xhr.status !== 200) {
+				throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
+			} else {
+				let { content:{sha:file_sha} } = xpupdate.xhr.response;
+				delete new_pref_hotkey[filetype].base_file_sha;
+				delete new_pref_hotkey[filetype].changes_since_base;
+				new_pref_hotkey[filetype].file_sha = file_sha;
 			}
 		}
 
@@ -782,9 +866,10 @@ let Hotkey = React.createClass({
 	render() {
 		let { pref_hotkey } = this.props;
 
-		let { enabled, filename, combo, locale, code } = pref_hotkey;
+		let { enabled, filename, combo, command } = pref_hotkey;
 
-		let { name, description } = locale.content['en-US'];
+		let { file_sha, content:{group, locale:{'en-US':{name, description}}, code:{exec:code}} } = command;
+		// file_sha, group, name, description, code
 
 		let combotxt;
 		let hashotkey = true;
@@ -794,9 +879,9 @@ let Hotkey = React.createClass({
 		}
 
 		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
-		// cant use `locale.commit_sha` and `code.commit_sha` to determine `islocal`, as it might be edited and not yet shared
+		// cant use `locale.file_sha` and `code.file_sha` to determine `islocal`, as it might be edited and not yet shared
 
-		let isshared = (!islocal && locale.commit_sha && code.commit_sha);
+		let isshared = (!islocal && file_sha);
 
 		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
 
@@ -873,25 +958,26 @@ let Controls = React.createClass({
 		let isvalid = (editing && editing.isvalid);
 
 		if (stopClickAndCheck0(e) && isvalid) {
+			let { filename } = editing;
 			let newhotkey = {
-				enabled: false,
-				filename: editing.filename,
-				combo: null,
-				locale: {
-					// commit_sha: null,
-					// file_sha: null,
+				enabled: false, // assuming it was just created, if this is edit, this is copied from pref_hotkey
+				filename,
+				combo: null, // assuming it was just created, if this is edit, this is copied from pref_hotkey
+				// changes_since_base // added below if it is edit of isgitfile (!islocal)
+				// base_file_sha // added below if it is edit of isgitfile (!islocal)
+				command: {
+					// file_sha
 					content: {
-						'en-US': {
-							name: document.getElementById('name').value.trim(),
-							description: document.getElementById('description').value.trim()
+						group: document.getElementById('group').value,
+						locale: {
+							'en-US': {
+								name: document.getElementById('name').value.trim(),
+								description: document.getElementById('description').value.trim()
+							}
+						},
+						code: {
+							exec: document.getElementById('code').value.trim()
 						}
-					}
-				},
-				code: {
-					// commit_sha: null,
-					// file_sha: null,
-					content: {
-						exec: document.getElementById('code').value.trim()
 					}
 				}
 			};
@@ -907,44 +993,45 @@ let Controls = React.createClass({
 				let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
 
 				// test if anything changed - and if it wasnt, then take into newhotkey reference to it
-				['locale', 'code'].forEach(filetype => {
-					if (JSON.stringify(newhotkey[filetype].content) == JSON.stringify(pref_hotkey[filetype].content)) {
-						// not changed, so even keep same reference
-						newhotkey[filetype] = pref_hotkey[filetype];
-					} else {
-						// changed
-						let { file_sha, base_file_sha, commit_sha, base_commit_sha } = pref_hotkey[filetype];
+				if (JSON.stringify(newhotkey.command.content) != JSON.stringify(pref_hotkey.command.content)) {
+					// changed
+					isreallyedited = true;
 
-						newhotkey[filetype].base_file_sha = file_sha || base_file_sha;
-						newhotkey[filetype].base_commit_sha = commit_sha || base_commit_sha;
-
-						if (!newhotkey[filetype].base_commit_sha) {
-							// so it was a never shared one
-							// so its value was set to undefined, so just delete it
-							delete newhotkey[filetype].base_commit_sha;
-							delete newhotkey[filetype].base_file_sha;
-						}
-
-						// if it has it // because edited, this sha is no longer true to it
-						delete pref_hotkey[filetype].commit_sha;
-						delete pref_hotkey[filetype].file_sha;
-						isreallyedited = true;
-					}
-				});
-
-				if (isreallyedited) {
-					// if its not really edited, then this will never update it, so dont bother
 					// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
 					// like `enabled`, `combo`. `filename` is the same so no need to copy that
 					for (let p in pref_hotkey) {
-						if (['locale', 'code'].includes(p) === false) { // editables
-							newhotkey[p] = pref_hotkey[p];
+						if (p == 'command') continue;
+						newhotkey[p] = pref_hotkey[p];
+					}
+
+					// is there a gitfile? if so then set the git properies
+					let islocal = filename.startsWith('_'); // newhotkey.name is same as filename as this is not something copied even if isreallyedited
+					if (!islocal) {
+						// ok is gitfile
+
+						// set `base_file_sha` on `newhotkey`
+						let { file_sha, base_file_sha } = pref_hotkey.command;
+						if (!file_sha && !base_file_sha) throw 'how is this a gitfile (not local) and doesnt have a file_sha??';
+						newhotkey.command.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
+						// delete newhotkey.command.file_sha; // i never copied this from pref_hotkey so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
+
+						// set `changes_since_base` on `newhotkey`
+						// what more changed since last (FIRST or SECOND+)?
+						let { changes_since_base:[] } = pref_hotkey.command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
+						for (let change_type of ['group', 'locale', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes_since_base` and `field` is the keys in `content` of gitfile
+							if (JSON.stringify(newhotkey.command.content[change_type]) != JSON.stringify(pref_hotkey.command.content[change_type])) {
+								changes_since_base.push(change_type);
+							}
 						}
+						let changes_since_base_nodupes = new Set(...changes_since_base);
+						newhotkey.command.changes_since_base = changes_since_base_nodupes.sort(); // sorts and returns by reference // keep changes_since_base sorted per link98393
+
 					}
 				}
 			}
 
 			// storageCall and dispatch if necessary (ie: not dispatching if `(isedit && !isreallyedited)` )
+			// compound action - set hotkey and change page
 			if (isreallyedited) {
 				// pref_hotkeys[edit_pref_hotkey_ix] = newhotkey; // dont do this, we want to change the reference to the array entry, so we create new array below with .map
 				let newstg = {
@@ -960,6 +1047,7 @@ let Controls = React.createClass({
 					page_history: newpagehistory
 				}));
 
+				// update storage
 				let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
 				callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals })
 			} else if (!isedit) {
@@ -977,9 +1065,9 @@ let Controls = React.createClass({
 					page_history: newpagehistory
 				}));
 
+				// update storage
 				let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
-				callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals })
-
+				callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
 			}
 		}
 	},
@@ -1016,6 +1104,45 @@ let Controls = React.createClass({
 
 		// meat
 		switch (page) {
+			case 'community': {
+				if (gCommunityData) { // very risky - as if Controls renders after Page, then gCommunityData is blanked. But I think in render order Controls renders frist
+					rels.push(
+						React.createElement('div', { className:'input-group' },
+							React.createElement('input', { className:'form-control', placeholder:'Search', name:'search', id:'search', type:'text' }),
+							React.createElement('div', { className:'input-group-btn' },
+								React.createElement('button', { className:'btn btn-default', type:'submit' },
+									React.createElement('i', { className:'glyphicon glyphicon-search' })
+								)
+							)
+						)
+					);
+				}
+				//
+				// 	React.createElement('ul', { className:'pagination' },
+				// 		React.createElement('li', undefined,
+				// 			React.createElement('a', { href:'#' },
+				// 				'«'
+				// 			)
+				// 		),
+				// 		React.createElement('li', { className:'active' },
+				// 			React.createElement('a', { href:'#' },
+				// 				'1'
+				// 			)
+				// 		),
+				// 		React.createElement('li', undefined,
+				// 			React.createElement('a', { href:'#' },
+				// 				'2'
+				// 			)
+				// 		),
+				// 		React.createElement('li', undefined,
+				// 			React.createElement('a', { href:'#' },
+				// 				'»'
+				// 			)
+				// 		)
+				// 	)
+
+				break;
+			}
 			case 'my_hotkeys':
 					let { oauth } = this.props; // mapped state
 
@@ -1055,39 +1182,6 @@ let Controls = React.createClass({
 					);
 				break;
 		}
-
-		// 	React.createElement('div', { className:'input-group' },
-		// 		React.createElement('input', { className:'form-control', placeholder:'Search', name:'search', id:'search', type:'text' }),
-		// 		React.createElement('div', { className:'input-group-btn' },
-		// 			React.createElement('button', { className:'btn btn-default', type:'submit' },
-		// 				React.createElement('i', { className:'glyphicon glyphicon-search' })
-		// 			)
-		// 		)
-		// 	),
-		//
-		// 	React.createElement('ul', { className:'pagination' },
-		// 		React.createElement('li', undefined,
-		// 			React.createElement('a', { href:'#' },
-		// 				'«'
-		// 			)
-		// 		),
-		// 		React.createElement('li', { className:'active' },
-		// 			React.createElement('a', { href:'#' },
-		// 				'1'
-		// 			)
-		// 		),
-		// 		React.createElement('li', undefined,
-		// 			React.createElement('a', { href:'#' },
-		// 				'2'
-		// 			)
-		// 		),
-		// 		React.createElement('li', undefined,
-		// 			React.createElement('a', { href:'#' },
-		// 				'»'
-		// 			)
-		// 		)
-		// 	)
-
 
 		// has back button?
 		if (page_history.length > 1) {

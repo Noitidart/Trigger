@@ -436,6 +436,16 @@ function setXPrefs(aArgs) {
 	}
 }
 
+function beautifyText({ js }) {
+	// comm func
+	var gBeautify = {};
+
+	let { require } = Cu.import('resource://devtools/shared/Loader.jsm', {});
+	var { jsBeautify } = require('devtools/shared/jsbeautify/src/beautify-js');
+
+	return jsBeautify(js);
+}
+
 // start - common helper functions
 function getNativeHandlePtrStr(aDOMWindow) {
 	var aDOMBaseWindow = aDOMWindow.QueryInterface(Ci.nsIInterfaceRequestor)
