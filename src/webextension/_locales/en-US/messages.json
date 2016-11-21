@@ -44,5 +44,20 @@
 	"startupfailed_exemismatch_howtofix1": { "message": "Please manually upgrade the executable *OR* downgrade the extension." },
 	"startupfailed_exemismatch_howtofix2": { "message": "Please manually downgrade the executable *OR* upgrade the extension." },
 
-	"browseraction_title": { "message": "Trigger Dashboard" }
+	"browseraction_title": { "message": "Trigger Dashboard" },
+
+
+	"install": { "message": "Install" },
+	"installed": { "message": "Installed" },
+	"last_updated": { "message": "Last Updated" },
+	"installs": { "message": "Installs" },
+
+
+	"group": { "message": "Group" },
+	"group_nocategory": { "message": "Uncategorized" },
+	"group_tabs": { "message": "Tabs" },
+	"group_websites": { "message": "Websites" },
+	"group_unique": { "message": "Unique" },
+	"group_keys": { "message": "Send Keys" }
+
 }

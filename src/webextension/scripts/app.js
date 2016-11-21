@@ -120,6 +120,14 @@ let hydrant = {
 	}
 };
 
+const GROUPS = [ // command groups
+	{ id:0, text:browser.i18n.getMessage('group_nocategory') }, // must keep this as first element
+	{ id:1, text:browser.i18n.getMessage('group_tabs') },
+	{ id:2, text:browser.i18n.getMessage('group_websites') },
+	{ id:3, text:browser.i18n.getMessage('group_unique') },
+	{ id:4, text:browser.i18n.getMessage('group_keys') }
+].sort((a,b) => a.id === 0 ? -1 : a.text.localeCompare(b.text)); // keep "Uncategorized" at top, and rest alpha
+
 // ACTIONS
 const SET_MAIN_KEYS = 'SET_MAIN_KEYS';
 
@@ -453,18 +461,14 @@ let Page = React.createClass({
 
 							React.createElement('div', { className:'input-group' },
 								React.createElement('span', { className:'input-group-addon' },
-									'Group'
+									browser.i18n.getMessage('group')
 								),
 								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
 								React.createElement('select', { className:'form-control', id:'group', onChange:this.validateForm, defaultValue:group },
-									React.createElement('option', { value:'0' },
-										'Uncategorized'
-									),
-									React.createElement('option', { value:'1' },
-										'Tabs'
-									),
-									React.createElement('option', { value:'2' },
-										'Website'
+									GROUPS.map(({id:value, text}) =>
+										React.createElement('option', { value },
+											text
+										)
 									)
 								)
 							),
@@ -525,6 +529,8 @@ let Page = React.createClass({
 				break;
 			}
 			case 'community': {
+					let { pref_hotkeys } = this.props; // mapped state
+
 					if (!gCommunityData) {
 						rels.push(
 							React.createElement('div', { className:'row text-center' },
@@ -545,32 +551,49 @@ let Page = React.createClass({
 								return;
 							}
 
-							let hotkeys_tree = [];
-							// entry: { hotkey: HotkeyStruct, code_history } // locale is always up to date
+							let hotkeys_data = [];
+							// entry: { hotkey: HotkeyStruct, history,  } // history is contents entries with info
 							let { tree } = xpcommunity.xhr.response;
 
 							// get contents of each file in tree
-							for (let {path} of tree) {
+							let basket = new PromiseBasket; // for fetching content of each file
+
+							for (let {path, url, sha:file_sha} of tree) {
 								if (!path.endsWith('.json')) continue;
 								let filename = path.substr(0, path.indexOf('.json'));
 
-								// hotkeys_tree.push({
-								// 	hotkey: {
-								// 		enabled: undefined,
-								// 		combo: undefined,
-								// 		filename,
-								// 		locale: {
-								// 			file_sha:
-								// 		},
-								// 		code:
-								// 	}
-								// });
+								basket.add(
+									(async function() {
+										let xpcontent = await xhrPromise(url, { restype:'json', headers:{Accept:'application/vnd.github.v3+json'} });
+										let xcontent = xpcontent.xhr;
+										if (xcontent.status !== 200) throw 'Failed to get contents for file ${filename}';
+
+										let { response:{content:encoded_content} } = xcontent;
+										let hotkey = {
+											enabled: false,
+											combo: null,
+											filename,
+											file_sha,
+											command: {
+												content: JSON.parse(atob(encoded_content))
+											}
+										};
+
+										hotkeys_data.push({
+											hotkey
+										});
+									})()
+								);
 							}
+
+							await basket.run();
+							console.log('ok basket done, hotkeys_data:', hotkeys_data);
+							gCommunityData = { hotkeys_data };
 
 							reload('community');
 						}, 0);
 					} else {
-						let { errorxhr, hotkeys_tree } = gCommunityData;
+						let { errorxhr, hotkeys_data } = gCommunityData;
 						gCommunityData = undefined;
 
 						if (errorxhr) {
@@ -606,6 +629,82 @@ let Page = React.createClass({
 										)
 									);
 							}
+						} else {
+							// hotkeys_data
+							console.log('ok hotkeys_data:', hotkeys_data);
+
+							rels.push(
+								// categories filter
+								React.createElement('div', { className:'row'},
+									React.createElement('div', { className:'col-md-3' },
+										React.createElement('div', { className:'list-group' },
+											React.createElement('h4', undefined,
+												'Categories'
+											),
+											GROUPS.map(({id, text}) =>
+												React.createElement('a', { className:'list-group-item', href:'#' },
+													React.createElement('span', { className:'badge' },
+														'0'
+													),
+													' ',
+													text
+												)
+											)
+										)
+									),
+									// hotkey results
+									React.createElement('div', { className:'col-md-9' },
+										hotkeys_data.map(entry => {
+											let locale = 'en-US'; // TODO: detect and fallback
+											let { filename, file_sha, command:{content:{group, locale:{'en-US':{name, description}}, code:{exec:code}}} } = entry.hotkey;
+
+											// figure out if it is installed, and if it is lower version, or higher version, or custom based on lower version, or custom based on this version
+											let has_pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
+											let isinstalled;
+											if (has_pref_hotkey) {
+												isinstalled = {};
+											}
+
+											return [
+												React.createElement('div', { className:'row' },
+													React.createElement('div', { className:'col-sm-4' },
+														React.createElement('img', { className:'img-responsive', src:'http://placehold.it/1280X720' }),
+													),
+													React.createElement('div', { className:'col-sm-8' },
+														React.createElement('h3', undefined,
+															name
+														),
+														React.createElement('p', { className:'text-muted pull-right' },
+															React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
+																React.createElement('span', { className:'glyphicon glyphicon-cloud-download' }),
+																' ', '141'
+															),
+															' ',
+															React.createElement('span', { title:browser.i18n.getMessage('last_updated'), style:{margin:'0 7px'} },
+																React.createElement('span', { className:'glyphicon glyphicon-calendar' }),
+																' ', 'July 24, 2016'
+															)
+														),
+														React.createElement('p', undefined,
+															React.createElement('a', { href:'#', className:'btn btn-default btn-success', disabled:isinstalled },
+																React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
+																' ', (isinstalled ? browser.i18n.getMessage('installed') : browser.i18n.getMessage('install'))
+															)
+														),
+														React.createElement('p', undefined,
+															description
+														),
+														React.createElement('p', { className:'text-muted' },
+															'Missing Languages: none'
+														)
+													)
+												),
+												entry != hotkeys_data[hotkeys_data.length-1] ? React.createElement('hr') : undefined // dont show hr on last entry
+											]
+										})
+									)
+								)
+							);
 						}
 					}
 				break;
@@ -946,7 +1045,7 @@ let Hotkey = React.createClass({
 						combotxt
 					),
 					React.createElement('p', undefined,
-						description
+						name
 					),
 					React.createElement('p', undefined,
 						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'warning' : 'default'), 'data-tooltip':(hashotkey ? 'Change Hotkey' : 'Set Hotkey') },
@@ -1164,9 +1263,27 @@ let Controls = React.createClass({
 		switch (page) {
 			case 'community': {
 				if (gCommunityData) { // very risky - as if Controls renders after Page, then gCommunityData is blanked. But I think in render order Controls renders frist
+					// sort
 					rels.push(
-						React.createElement('div', { className:'input-group' },
-							React.createElement('input', { className:'form-control', placeholder:'Search', name:'search', id:'search', type:'text' }),
+						React.createElement('div', { className:'input-group pull-right' },
+							React.createElement('select', { className:'form-control', id:'sort', style:{borderRadius:'4px'} },
+								React.createElement('option', { value:'alpha_asc' },
+									'Alphabetical'
+								),
+								React.createElement('option', { value:'alpha_asc' },
+									'Most Installed'
+								),
+								React.createElement('option', { value:'alpha_asc' },
+									'Recently Updated'
+								)
+							)
+						)
+					);
+
+					// search
+					rels.push(
+						React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
+							React.createElement('input', { className:'form-control', placeholder:'Search', id:'search', type:'text' }),
 							React.createElement('div', { className:'input-group-btn' },
 								React.createElement('button', { className:'btn btn-default', type:'submit' },
 									React.createElement('i', { className:'glyphicon glyphicon-search' })
@@ -1231,7 +1348,7 @@ let Controls = React.createClass({
 
 					let isvalid = (editing && editing.isvalid);
 					rels.push(
-						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:(isvalid ? '' : 'disabled'), onClick:this.saveHotkey, tabIndex:(isvalid ? undefined : '-1') },
+						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:isvalid, onClick:this.saveHotkey, tabIndex:(isvalid ? undefined : '-1') },
 							React.createElement('span', { className:'glyphicon glyphicon-ok' }),
 							' ',
 							page == 'edit_command' ? 'Update Command' : 'Add Command'
@@ -1578,4 +1695,22 @@ function queryStringDom(objstr, opts={}) {
 		}).join('&') : '';
 	}
 }
+
+class PromiseBasket {
+	constructor() {
+		this.promises = [];
+		this.thens = [];
+	}
+	add(aAsync, onThen) {
+		// onThen is optional
+		this.promises.push(aAsync);
+		this.thens.push(onThen);
+	}
+	async run() {
+		let results = await Promise.all(this.promises);
+		results.forEach((r, i)=>this.thens[i] ? this.thens[i](r) : null);
+		return results;
+	}
+}
+
 // end - cmn
