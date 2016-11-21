@@ -256,7 +256,7 @@ let app = Redux.combineReducers({
 	command: {
 		file_sha, // not there if edited & unshared edits
 		base_file_sha, // only there if edited & unshared edits
-		changes_since_base: ['group', 'locale', 'code'] // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
+		changes_since_base: {'group':1, 'locale':{a:[],r:[],u:[]}, 'code':1} // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
 		content: {
 			group:
 			locale: {
@@ -338,7 +338,7 @@ let Page = React.createClass({
 			{
 				page_history: [...store.getState().page_history, 'create_command'], // changes the page
 				editing: {
-					filename: '_' + Date.now(), // tells it what to save with
+					filename: '_' + genFilename(), // tells it what to save with
 					isvalid: false // if the form is currently valid
 				}
 			}
@@ -543,17 +543,66 @@ let Page = React.createClass({
 						);
 
 						setTimeout(async function() {
-							let xpcommunity = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/git/trees/master', { restype:'json' });
-							console.log('xpcommunity:', xpcommunity);
-							if (xpcommunity.xhr.status !== 200) {
-								gCommunityData = { errorxhr:xpcommunity.xhr }
+							// get file tree
+							let tree;
+							try {
+								let xp = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/git/trees/master', { restype:'json' }); // can throw
+								let { xhr:{status, response} } = xp;
+								if (status !== 200) throw xp; // can throw
+								({ tree } = response);
+							} catch(xperr) {
+								let extra_reason = 'Failed to get latest community data from server.';
+								let error = {err, extra_reason};
+								console.error('error:', error);
+								gCommunityData = { error }
 								reload('community');
 								return;
 							}
 
+							// get commits - used for history and statistics
+							let commits;
+							try {
+								let xp = await xhrPromise('http://api.github.com/repos/Noitidart/Trigger-Community/commits', { restype:'json' }); // can throw
+								let { xhr:{status, response} } = xp;
+								if (status !== 200) throw xp; // can throw
+								commits = response;
+							} catch(err) {
+								let extra_reason = 'Failed to get community history from server';
+								let error = {err, extra_reason};
+								console.error('error:', error);
+								gCommunityData = { error }
+								reload('community');
+								return;
+							}
+							// clean out commits
+							commits = commits.reduce((acc, el) => {
+								let commit = {
+									name: el.committer.login, // name of author
+									date: new Date(el.commit.committer.date),
+									message: el.commit.message
+								};
+
+								if (commit.name == 'web-flow') return acc; // this is a PR merge, `el.commit.author.name` will be "Noitidart" discard // `el.commit.comitter.name` will be "Github"
+
+								// cant do the ='s test as it is 0, 1, or 2 ='s per http://stackoverflow.com/a/8571544/1828637
+								// if (!commit.message.endsWith('=')) return acc; // is not a btoa string
+								try {
+									commit.message = JSON.parse(atob(commit.message));
+								} catch(ex) {
+									console.error('ERROR: Trying to `JSON.parse` the `atob` of it caused error. commit.message:', commit.message);
+									return acc; // this is not a proper message, so it is not one of my files, discard it
+								}
+
+								acc.push(commit);
+
+								return acc;
+							}, []);
+
+							console.log('commits:', commits);
+
+
 							let hotkeys_data = [];
 							// entry: { hotkey: HotkeyStruct, history,  } // history is contents entries with info
-							let { tree } = xpcommunity.xhr.response;
 
 							// get contents of each file in tree
 							let basket = new PromiseBasket; // for fetching content of each file
@@ -561,6 +610,7 @@ let Page = React.createClass({
 							for (let {path, url, sha:file_sha} of tree) {
 								if (!path.endsWith('.json')) continue;
 								let filename = path.substr(0, path.indexOf('.json'));
+								if (filename.length != 8) continue; // i made the change to 8 char filename when started commit message of btoa
 
 								basket.add(
 									(async function() {
@@ -588,47 +638,38 @@ let Page = React.createClass({
 
 							await basket.run();
 							console.log('ok basket done, hotkeys_data:', hotkeys_data);
+
+							// get
+
 							gCommunityData = { hotkeys_data };
 
 							reload('community');
 						}, 0);
 					} else {
-						let { errorxhr, hotkeys_data } = gCommunityData;
+						let { error, hotkeys_data } = gCommunityData;
 						gCommunityData = undefined;
 
-						if (errorxhr) {
-							let { status, response } = errorxhr;
-							switch (status) {
-								case 200: {
-									rels.push(
-										React.createElement('div', { className:'row text-center' },
-											'Loaded to community,',
-											React.createElement('br'),
-											React.createElement('br'),
-											JSON.stringify(response)
-										)
-									);
-									break;
-								}
-								default:
-									rels.push(
-										React.createElement('div', { className:'row text-center' },
-											'Failed to connect to community.',
-											React.createElement('br'),
-											React.createElement('br'),
-											React.createElement('dl', undefined,
-												React.createElement('dt', undefined,
-													React.createElement('dd', undefined,
-														'Status Code: ' + status
-													),
-													React.createElement('dd', undefined,
-														'Response: ' + JSON.stringify(response)
-													)
-												)
+						if (error) {
+							let { xp={}, extra_reason } = error;
+							let { xhr={} } = xp;
+							let { status, response } = xhr;
+							rels.push(
+								React.createElement('div', { className:'row text-center' },
+									'Failed to connect to community. ' + extra_reason,
+									React.createElement('br'),
+									React.createElement('br'),
+									React.createElement('dl', undefined,
+										React.createElement('dt', undefined,
+											React.createElement('dd', undefined,
+												'Status Code: ' + status
+											),
+											React.createElement('dd', undefined,
+												'Response: ' + JSON.stringify(response)
 											)
 										)
-									);
-							}
+									)
+								)
+							);
 						} else {
 							// hotkeys_data
 							console.log('ok hotkeys_data:', hotkeys_data);
@@ -672,7 +713,10 @@ let Page = React.createClass({
 													),
 													React.createElement('div', { className:'col-sm-8' },
 														React.createElement('h3', undefined,
-															name
+															name, ' ',
+															React.createElement('small', undefined,
+																browser.i18n.getMessage('addon_version_long', '2')
+															)
 														),
 														React.createElement('p', { className:'text-muted pull-right' },
 															React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
@@ -893,18 +937,30 @@ let Hotkey = React.createClass({
 					let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
 					console.log('xpexists:', xpexists);
 					if (xpexists.xhr.status === 404) break; // newfilename is not taken
-					newfilename = '' + Date.now();
+					newfilename = '' + genFilename();
 					await promiseTimeout(200);
 				}
 				new_pref_hotkey.filename = newfilename;
 
 				// step 3a.2 - create file
+				// create commit_message
+				let commit_message = {
+					type: 'new',
+					filename: newfilename,
+					code:1,
+					group:1,
+					locale: {
+						a: Object.keys(pref_hotkey.command.content.locale)
+						// a: Object.keys(pref_hotkey.command.content.locale).filter( locale => (pref_hotkey.command.content.locale[locale].name || pref_hotkey.command.content.locale[locale].description) ) // remove if both name AND desc are blank // TODO: when i implement locales, this removal should be redundant, as if both are blank, i should not insert it into the `command.content.locale` object
+					}
+				};
+
 				let xpcreate = await xhrPromise({
 					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
 					method: 'PUT',
 					restype: 'json',
 					data: JSON.stringify({
-						message: 'Add new command',
+						message: btoa(JSON.stringify(commit_message)),
 						content: btoa(JSON.stringify(pref_hotkey.command.content))
 					}),
 					headers: {
@@ -926,7 +982,7 @@ let Hotkey = React.createClass({
 
 				if (!pref_hotkey.command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
 
-				prtitle = 'Update command ' + pref_hotkey.command.changes_since_base.join(' and '); // link98393 NOTE: keep `changes_since_base` always sorted when do `saveHotkey`
+				prtitle = 'Update command ' + Object.keys(pref_hotkey.command.changes_since_base).sort().join(', ');
 
 				// step 3b.1 get sha of file -filetype.json
 				let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
@@ -946,12 +1002,18 @@ let Hotkey = React.createClass({
 				let use_file_sha = master_file_sha; // TODO: this is experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
 
 				// step 3b.2 - update file
+				let commit_message = {
+					type: 'update',
+					filename,
+					...pref_hotkey.command.changes_since_base
+				};
+
 				let xpupdate = await xhrPromise({
 					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
 					method: 'PUT',
 					restype: 'json',
 					data: JSON.stringify({
-						message: prtitle,
+						message: btoa(JSON.stringify(commit_message)),
 						content: btoa(JSON.stringify(pref_hotkey.command.content)),
 						sha: use_file_sha
 					}),
@@ -1179,14 +1241,48 @@ let Controls = React.createClass({
 
 						// set `changes_since_base` on `newhotkey`
 						// what more changed since last (FIRST or SECOND+)?
-						let { changes_since_base=[] } = command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
+						let { changes_since_base={} } = command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
 						for (let change_type of ['group', 'locale', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes_since_base` and `field` is the keys in `content` of gitfile
 							if (JSON.stringify(newcontent[change_type]) != JSON.stringify(content[change_type])) {
-								changes_since_base.push(change_type);
+								changes_since_base[change_type] = 1;
+
+								if (change_type == 'locale') {
+									// figure out which locales changed
+									let newlocales = newcontent.locale;
+									let oldlocales = content.locale;
+									// which locales added
+									let a = []; // TODO: global note - rename to `locales` in `command.content` rather then `locale`
+									for (let nl in newlocales) {
+										// nl - newlocale
+										if (!(nl in oldlocales))
+										 	if (newlocales[nl].name || newlocales[nl].description) // make sure at least one is provided
+												a.push(nl);
+									}
+
+									// which locales removed
+									let r = [];
+									for (let ol in oldlocales) {
+										if (!(ol in newlocales))
+											r.push(ol);
+									}
+
+									// which locales updated
+									let u = [];
+									for (let ol in oldlocales) {
+										if (ol in newlocales) // make sure it is in newlocales (so not removed)
+											if (newlocales[ol].name != oldlocales[ol].name || newlocales[ol].description != oldlocales[ol].description) // NOTE: if one is updated to blank, then it is counted as update // TODO: ensure that form NEVER accepts if one or the other is blank this will resolve this issue
+												u.push(ol);
+									}
+
+									changes_since_base.locale = {
+										...(a.length ? {a} : {}),
+										...(r.length ? {r} : {}),
+										...(u.length ? {u} : {})
+									};
+								}
 							}
 						}
-						let nodupes = new Set(changes_since_base);
-						newcommand.changes_since_base = [...nodupes].sort(); // sorts and returns by reference // keep changes_since_base sorted per link98393
+						newcommand.changes_since_base = changes_since_base;
 
 					}
 				}
@@ -1434,6 +1530,23 @@ let PageContainer = ReactRedux.connect(
 		}
 	}
 )(Page);
+
+function genFilename() {
+	// salt generator from http://mxr.mozilla.org/mozilla-aurora/source/toolkit/profile/content/createProfileWizard.js?raw=1*/
+
+	var mozKSaltTable = [
+		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
+		'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+		'1', '2', '3', '4', '5', '6', '7', '8', '9', '0'
+	];
+
+	var kSaltString = '';
+	for (var i = 0; i < 8; ++i) {
+		kSaltString += mozKSaltTable[Math.floor(Math.random() * mozKSaltTable.length)];
+	}
+	return kSaltString;
+	// return kSaltString + '.' + aName;
+}
 
 // start - cmn
 function pushAlternatingRepeating(aTargetArr, aEntry) {
