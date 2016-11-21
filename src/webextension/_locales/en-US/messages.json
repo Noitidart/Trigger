@@ -51,9 +51,11 @@
 	"installed": { "message": "Installed" },
 	"last_updated": { "message": "Last Updated" },
 	"installs": { "message": "Installs" },
+	"versions": { "message": "Versions" },
 
 
 	"group": { "message": "Group" },
+	"all": { "message": "All" },
 	"group_nocategory": { "message": "Uncategorized" },
 	"group_tabs": { "message": "Tabs" },
 	"group_websites": { "message": "Websites" },

@@ -641,8 +641,8 @@ let Page = React.createClass({
 											React.createElement('h4', undefined,
 												'Categories'
 											),
-											GROUPS.map(({id, text}) =>
-												React.createElement('a', { className:'list-group-item', href:'#' },
+											[{id:-1, text:browser.i18n.getMessage('all')}, ...GROUPS].map(({id, text}) =>
+												React.createElement('a', { className:'list-group-item', href:'#', style:(id !== -1 ? undefined : {backgroundColor:'#f0f0f0'}) }, // if active, give it style `#f0f0f0` (which is the hover background-color) rather then `active`. active is too dark.
 													React.createElement('span', { className:'badge' },
 														'0'
 													),
@@ -689,6 +689,11 @@ let Page = React.createClass({
 															React.createElement('a', { href:'#', className:'btn btn-default btn-success', disabled:isinstalled },
 																React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
 																' ', (isinstalled ? browser.i18n.getMessage('installed') : browser.i18n.getMessage('install'))
+															),
+															' ',
+															React.createElement('a', { href:'#', className:'btn btn-default' },
+																React.createElement('span', { className:'glyphicon glyphicon-dashboard' }),
+																' ', browser.i18n.getMessage('versions')
 															)
 														),
 														React.createElement('p', undefined,
