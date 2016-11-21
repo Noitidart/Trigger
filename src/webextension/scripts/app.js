@@ -235,8 +235,8 @@ function editing(state=null, action) {
 
 let app = Redux.combineReducers({
 	stg,
-	page_history, // string; enum[my_hotkeys,add_hotkey,community,edit_hotkey,create_hotkey]
-	editing // only respected if page is edit_hotkey
+	page_history, // string; enum[my_hotkeys,add_command,community,edit_command,create_command]
+	editing // only respected if page is edit_command
 });
 
 /* HotkeyStruct -
@@ -283,7 +283,7 @@ let App = React.createClass({
 let gCommunityData;
 let Page = React.createClass({
 	displayName: 'Page',
-	// functions for create_hotkey and edit_hotkey pages
+	// functions for create_command and edit_command pages
 	validateForm() {
 		let { editing } = this.props; // mapped state
 
@@ -322,13 +322,13 @@ let Page = React.createClass({
 		let js = elcode.value;
 		callInBootstrap('beautifyText', { js }, beautified => elcode.value = beautified);
 	},
-	// functions for add_hotkey pages
+	// functions for add_command pages
 	loadCreateHotkey(e) {
 		if (!stopClickAndCheck0(e)) return;
 
 		store.dispatch(setMainKeys(
 			{
-				page_history: [...store.getState().page_history, 'create_hotkey'], // changes the page
+				page_history: [...store.getState().page_history, 'create_command'], // changes the page
 				editing: {
 					filename: '_' + Date.now(), // tells it what to save with
 					isvalid: false // if the form is currently valid
@@ -345,19 +345,19 @@ let Page = React.createClass({
 
 		let rels = [];
 		switch (page) {
-			case 'add_hotkey': {
+			case 'add_command': {
 					rels.push(
 						React.createElement('div', { className:'row text-center' },
 							React.createElement('a', { href:'#', className:'btn btn-default btn-lg', onClick:load.bind(null, 'community') },
 								React.createElement('span', { className:'glyphicon glyphicon-globe' }),
 								' ',
-								'Browse Community'
+								'Browse Community Shared Commands'
 							),
 							' ',
 							React.createElement('a', { href:'#', className:'btn btn-default btn-lg', onClick:this.loadCreateHotkey },
 								React.createElement('span', { className:'glyphicon glyphicon-console' }),
 								' ',
-								'Write My Own'
+								'Write New Command'
 							)
 						)
 					);
@@ -403,14 +403,14 @@ let Page = React.createClass({
 					}
 				break;
 			}
-			case 'create_hotkey':
-			case 'edit_hotkey': {
+			case 'create_command':
+			case 'edit_command': {
 					let { editing, pref_hotkeys } = this.props; // mapped state
 
 					let locale='en-US'; // TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
 
 					let name, description, code, group=0; // default group "Uncategorized"
-					if (page == 'edit_hotkey') {
+					if (page == 'edit_command') {
 						// update defaults from current values of hotkey
 						let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
 						({ group,  locale:{[locale]:{name,description}}, code:{exec:code} } = pref_hotkey.command.content);
@@ -507,10 +507,10 @@ let Page = React.createClass({
 									React.createElement('br'),
 									React.createElement('br'),
 									React.createElement('div', { className:'btn-group' },
-										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Beautify', onClick:this.beautifyCode },
+										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Beautify', onClick:this.beautifyCode, tabIndex:'-1' },
 											React.createElement('span', { className:'glyphicon glyphicon-console' })
 										),
-										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Revert', onClick:this.revertCode },
+										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Revert', onClick:this.revertCode, tabIndex:'-1' },
 											React.createElement('span', { className:'glyphicon glyphicon-repeat' })
 										)
 									)
@@ -624,7 +624,7 @@ let LocalePicker = React.createClass({
 		let { locale='en-US' } = this.props;
 
 		return React.createElement('div', { className:'input-group-btn' },
-			React.createElement('select', { className:'btn btn-default', defaultValue:locale },
+			React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1' },
 				React.createElement('option', { value:'en-US' },
 					'English'
 				)
@@ -720,7 +720,7 @@ let Hotkey = React.createClass({
 
 		store.dispatch(setMainKeys(
 			{
-				page_history: [...store.getState().page_history, 'edit_hotkey'],
+				page_history: [...store.getState().page_history, 'edit_command'],
 				editing: {
 					filename,
 					isvalid: false
@@ -925,7 +925,7 @@ let Hotkey = React.createClass({
 		let combotxt;
 		let hashotkey = true;
 		if (!combo || !combo.length) {
-			combotxt = 'NO HOTKEY';
+			combotxt = 'NO HOTKEY SET';
 			hashotkey = false;
 		}
 
@@ -982,7 +982,7 @@ let Hotkey = React.createClass({
 let HotkeyAdd = React.createClass({
 	displayName: 'HotkeyAdd',
 	click(e) {
-		if (stopClickAndCheck0(e)) store.dispatch(loadPage('add_hotkey'));
+		if (stopClickAndCheck0(e)) store.dispatch(loadPage('add_command'));
 	},
 	render() {
 		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature hotkey-add' },
@@ -1003,7 +1003,7 @@ let HotkeyAdd = React.createClass({
 
 let Controls = React.createClass({
 	displayName: 'Controls',
-	// for page edit_hotkey and create_hotkey
+	// for page edit_command and create_command
 	saveHotkey(e) {
 		let { editing, page_history } = this.props; // mapped state
 		let isvalid = (editing && editing.isvalid);
@@ -1038,7 +1038,7 @@ let Controls = React.createClass({
 
 			// is new creation? or edit?
 			let page = page_history[page_history.length-1];
-			let isedit = page == 'edit_hotkey';
+			let isedit = page == 'edit_command';
 
 			let isreallyedited = false;
 			if (isedit) {
@@ -1225,16 +1225,16 @@ let Controls = React.createClass({
 						);
 					}
 				break;
-			case 'create_hotkey':
-			case 'edit_hotkey':
+			case 'create_command':
+			case 'edit_command':
 					let { editing } = this.props; // mapped state
 
 					let isvalid = (editing && editing.isvalid);
 					rels.push(
-						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:(isvalid ? '' : 'disabled'), onClick:this.saveHotkey },
+						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:(isvalid ? '' : 'disabled'), onClick:this.saveHotkey, tabIndex:(isvalid ? undefined : '-1') },
 							React.createElement('span', { className:'glyphicon glyphicon-ok' }),
 							' ',
-							page == 'edit_hotkey' ? 'Update Hotkey' : 'Add Hotkey'
+							page == 'edit_command' ? 'Update Command' : 'Add Command'
 						),
 						' '
 					);
