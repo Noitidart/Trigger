@@ -514,7 +514,7 @@ let Page = React.createClass({
 										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Beautify', onClick:this.beautifyCode, tabIndex:'-1' },
 											React.createElement('span', { className:'glyphicon glyphicon-console' })
 										),
-										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Revert', onClick:this.revertCode, tabIndex:'-1' },
+										page == 'edit_command' && React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Revert', onClick:this.revertCode, tabIndex:'-1' },
 											React.createElement('span', { className:'glyphicon glyphicon-repeat' })
 										)
 									)
@@ -1285,8 +1285,8 @@ let Controls = React.createClass({
 						React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
 							React.createElement('input', { className:'form-control', placeholder:'Search', id:'search', type:'text' }),
 							React.createElement('div', { className:'input-group-btn' },
-								React.createElement('button', { className:'btn btn-default', type:'submit' },
-									React.createElement('i', { className:'glyphicon glyphicon-search' })
+								React.createElement('a', { href:'#', className:'btn btn-default btn-danger' },
+									React.createElement('i', { className:'glyphicon glyphicon-remove' })
 								)
 							)
 						)
@@ -1348,7 +1348,7 @@ let Controls = React.createClass({
 
 					let isvalid = (editing && editing.isvalid);
 					rels.push(
-						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:isvalid, onClick:this.saveHotkey, tabIndex:(isvalid ? undefined : '-1') },
+						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:!isvalid, onClick:this.saveHotkey, tabIndex:(isvalid ? undefined : '-1') },
 							React.createElement('span', { className:'glyphicon glyphicon-ok' }),
 							' ',
 							page == 'edit_command' ? 'Update Command' : 'Add Command'
