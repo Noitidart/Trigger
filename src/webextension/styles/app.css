@@ -78,3 +78,8 @@ a[data-tooltip]:hover::before {
 select {
 	text-indent: -3px; /* to line up with the input text elements */
 }
+
+select.btn {
+	text-indent: -9px;
+	cursor: default;
+}

@@ -407,8 +407,10 @@ let Page = React.createClass({
 			case 'edit_hotkey': {
 					let { editing, pref_hotkeys } = this.props; // mapped state
 
-					let locale = 'en-US'; // TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
-					let name, description, code, group;
+					// TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
+					let locale='en-US', name, description, code, group=0;
+					// default group "Uncategorized"
+
 					if (page == 'edit_hotkey') {
 						// obviously isedit = true
 						// let isedit = !!pref_hotkey;
@@ -417,6 +419,9 @@ let Page = React.createClass({
 						description = pref_hotkey.command.content.locale[locale].description;
 						code = pref_hotkey.command.content.code.exec;
 						group = pref_hotkey.command.content.group;
+
+						// ({ group }) = pref_hotkey.command;
+
 					}
 
 					rels.push(
@@ -454,36 +459,6 @@ let Page = React.createClass({
 							// 	)
 							// ),
 
-							React.createElement('br'),
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon' },
-									'Language'
-								),
-								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
-								React.createElement('select', { className:'form-control', id:'locale', onChange:this.validateForm, defaultValue:locale },
-									React.createElement('option', { value:'en-US' },
-										'English'
-									)
-								)
-							),
-
-							React.createElement('br'),
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon' },
-									'Name'
-								),
-								React.createElement('input', { className:'form-control', type:'text', id:'name', onChange:this.validateForm, defaultValue:name }),
-							),
-
-							React.createElement('br'),
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon' },
-									'Description'
-								),
-								React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description })
-							),
-
-							React.createElement('br'),
 							React.createElement('div', { className:'input-group' },
 								React.createElement('span', { className:'input-group-addon' },
 									'Group'
@@ -500,6 +475,37 @@ let Page = React.createClass({
 										'Website'
 									)
 								)
+							),
+
+							// React.createElement('br'),
+							// React.createElement('div', { className:'input-group' },
+							// 	React.createElement('span', { className:'input-group-addon' },
+							// 		'Language'
+							// 	),
+							// 	React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
+							// 	React.createElement('select', { className:'form-control', id:'locale', onChange:this.validateForm, defaultValue:locale },
+							// 		React.createElement('option', { value:'en-US' },
+							// 			'English'
+							// 		)
+							// 	)
+							// ),
+
+							React.createElement('br'),
+							React.createElement('div', { className:'input-group' },
+								React.createElement('span', { className:'input-group-addon' },
+									'Name'
+								),
+								React.createElement('input', { className:'form-control', type:'text', id:'name', onChange:this.validateForm, defaultValue:name }),
+								React.createElement(LocalePicker, { locale })
+							),
+
+							React.createElement('br'),
+							React.createElement('div', { className:'input-group' },
+								React.createElement('span', { className:'input-group-addon' },
+									'Description'
+								),
+								React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description }),
+								React.createElement(LocalePicker, { locale })
 							),
 
 							React.createElement('br'),
@@ -619,6 +625,47 @@ let Page = React.createClass({
 		);
 	}
 });
+
+let LocalePicker = React.createClass({
+	displayName: 'LocalePicker',
+	render() {
+		let { locale='en-US' } = this.props;
+
+		return React.createElement('div', { className:'input-group-btn' },
+			React.createElement('select', { className:'btn btn-default', defaultValue:locale },
+				React.createElement('option', { value:'en-US' },
+					'English'
+				)
+			)
+		);
+
+		// return React.createElement('div', { className:'input-group-btn' }, // add `open` to class if you want it open
+		// 	React.createElement('button', { type:'button', className:'btn btn-default dropdown-toggle' },
+		// 		'English',
+		// 		' ',
+		// 		React.createElement('span', { className:'caret' })
+		// 	),
+		// 	React.createElement('ul', { className:'dropdown-menu dropdown-menu-right' },
+		// 		React.createElement('li', undefined,
+		// 			React.createElement('div', { className:'input-group input-group-sm', style:{margin:'0 auto'} },
+		// 				React.createElement('input', { className:'form-control', type:'text', disabled:'disabled', id:'locale' })
+		// 			)
+		// 		),
+		// 		React.createElement('li', { className:'divider' } ),
+		// 		React.createElement('li', undefined,
+		// 			React.createElement('a', { href:'#' },
+		// 				'French'
+		// 			)
+		// 		),
+		// 		React.createElement('li', undefined,
+		// 			React.createElement('a', { href:'#' },
+		// 				'Spanish'
+		// 			)
+		// 		)
+		// 	)
+		// );
+	}
+})
 
 let Header = React.createClass({
 	displayName: 'Header',
