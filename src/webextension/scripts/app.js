@@ -407,21 +407,13 @@ let Page = React.createClass({
 			case 'edit_hotkey': {
 					let { editing, pref_hotkeys } = this.props; // mapped state
 
-					// TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
-					let locale='en-US', name, description, code, group=0;
-					// default group "Uncategorized"
+					let locale='en-US'; // TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
 
+					let name, description, code, group=0; // default group "Uncategorized"
 					if (page == 'edit_hotkey') {
-						// obviously isedit = true
-						// let isedit = !!pref_hotkey;
+						// update defaults from current values of hotkey
 						let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
-						name = pref_hotkey.command.content.locale[locale].name;
-						description = pref_hotkey.command.content.locale[locale].description;
-						code = pref_hotkey.command.content.code.exec;
-						group = pref_hotkey.command.content.group;
-
-						// ({ group }) = pref_hotkey.command;
-
+						({ group,  locale:{[locale]:{name,description}}, code:{exec:code} } = pref_hotkey.command.content);
 					}
 
 					rels.push(
@@ -782,85 +774,97 @@ let Hotkey = React.createClass({
 
 		// step 3 - create/update file
 		let prtitle;
-		if (filename.startsWith('_')) {
-		// if (pref_hotkey.file_sha) 'No changes made! actually it can be new one created' THAT's why i prefix with `_` instead of `if (!pref_hotkey.base_file_sha && !pref_hotkey.file_sha)` // NOTE:
-			// never shared yet
-			prtitle = 'Add new command';
 
-			// step 3a.1
-			// check if filename exists - so getting avaialble filename as newfilename
-			// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
-			let newfilename = filename.substr(1);
-			while (true) {
-				let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
-				console.log('xpexists:', xpexists);
-				if (xpexists.xhr.status === 404) break; // newfilename is not taken
-				newfilename = '' + Date.now();
-				await promiseTimeout(200);
-			}
-			new_pref_hotkey.filename = newfilename;
+		for (let goto=0; goto<1; goto++) {
+			if (filename.startsWith('_')) {
+			// if (pref_hotkey.file_sha) 'No changes made! actually it can be new one created' THAT's why i prefix with `_` instead of `if (!pref_hotkey.base_file_sha && !pref_hotkey.file_sha)` // NOTE:
+				// never shared yet
+				prtitle = prtitle || 'Add new command';
 
-			// step 3a.2 - create file
-			let xpcreate = await xhrPromise({
-				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
-				method: 'PUT',
-				restype: 'json',
-				data: JSON.stringify({
-					message: 'Add new command',
-					content: btoa(JSON.stringify(pref_hotkey.command.content))
-				}),
-				headers: {
-					Accept: 'application/vnd.github.v3+json',
-					Authorization: 'token ' + mos.access_token
+				// step 3a.1
+				// check if filename exists - so getting avaialble filename as newfilename
+				// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
+				let newfilename = filename.substr(1);
+				while (true) {
+					let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
+					console.log('xpexists:', xpexists);
+					if (xpexists.xhr.status === 404) break; // newfilename is not taken
+					newfilename = '' + Date.now();
+					await promiseTimeout(200);
 				}
-			});
-			console.log('xpcreate:', xpcreate);
-			if (xpcreate.xhr.status !== 201) {
-				throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
-			} else {
-				let { content:{sha:file_sha} } = xpcreate.xhr.response;
-				// delete new_pref_hotkey.command.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
-				// delete new_pref_hotkey.command.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
-				new_pref_hotkey.command.file_sha = file_sha;
-			}
-		} else {
-			// update file
+				new_pref_hotkey.filename = newfilename;
 
-			if (!pref_hotkey.command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
-
-			prtitle = 'Update command ' + pref_hotkey.command.changes_since_base.join(' and '); // link98393 NOTE: keep `changes_since_base` always sorted when do `saveHotkey`
-
-			// step 3b.1 get sha of -filetype.json
-			let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}-${filetype}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
-			console.log('xpsha:', xpsha);
-			if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filetype}" File SHA"';
-			let master_file_sha = xpsha.xhr.response.sha;
-			// let base_file_sha = pref_hotkey.command.base_file_sha;
-			let use_file_sha = master_file_sha; // TODO: this is experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
-
-			// step 3b.2 - update file
-			let xpupdate = await xhrPromise({
-				url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
-				method: 'PUT',
-				restype: 'json',
-				data: JSON.stringify({
-					message: prtitle,
-					content: btoa(JSON.stringify(pref_hotkey[filetype].content)),
-					sha: use_file_sha
-				}),
-				headers: {
-					Accept: 'application/vnd.github.v3+json',
-					Authorization: 'token ' + mos.access_token
+				// step 3a.2 - create file
+				let xpcreate = await xhrPromise({
+					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
+					method: 'PUT',
+					restype: 'json',
+					data: JSON.stringify({
+						message: 'Add new command',
+						content: btoa(JSON.stringify(pref_hotkey.command.content))
+					}),
+					headers: {
+						Accept: 'application/vnd.github.v3+json',
+						Authorization: 'token ' + mos.access_token
+					}
+				});
+				console.log('xpcreate:', xpcreate);
+				if (xpcreate.xhr.status !== 201) {
+					throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
+				} else {
+					let { content:{sha:file_sha} } = xpcreate.xhr.response;
+					// delete new_pref_hotkey.command.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
+					// delete new_pref_hotkey.command.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
+					new_pref_hotkey.command.file_sha = file_sha;
 				}
-			});
-			console.log('xpupdate:', xpupdate);
-			if (xpupdate.xhr.status !== 200) {
-				throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
 			} else {
-				let { content:{sha:file_sha} } = xpupdate.xhr.response;
-				delete new_pref_hotkey[filetype].base_file_sha;
-				delete new_pref_hotkey[filetype].changes_since_base;
-				new_pref_hotkey[filetype].file_sha = file_sha;
+				// update file
+
+				if (!pref_hotkey.command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
+
+				prtitle = 'Update command ' + pref_hotkey.command.changes_since_base.join(' and '); // link98393 NOTE: keep `changes_since_base` always sorted when do `saveHotkey`
+
+				// step 3b.1 get sha of file -filetype.json
+				let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+				console.log('xpsha:', xpsha);
+				if (xpsha.xhr.status === 404) {
+					// gives 404 if user created THEN shared THEN before i accept pull request user edited and shared another update
+					// not an issue if already initiall accepted pr, it will just come in as another update
+					// so repeat step 3 but as "brand new local going to"
+					prtitle = 'Add new command again - initial PR was not yet accepted';
+					filename = '_' + filename;
+					goto--; // goto = -1;
+					continue;
+				}
+				if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filename}" File SHA"';
+				let master_file_sha = xpsha.xhr.response.sha;
+				// let base_file_sha = pref_hotkey.command.base_file_sha;
+				let use_file_sha = master_file_sha; // TODO: this is experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
+
+				// step 3b.2 - update file
+				let xpupdate = await xhrPromise({
+					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
+					method: 'PUT',
+					restype: 'json',
+					data: JSON.stringify({
+						message: prtitle,
+						content: btoa(JSON.stringify(pref_hotkey.command.content)),
+						sha: use_file_sha
+					}),
+					headers: {
+						Accept: 'application/vnd.github.v3+json',
+						Authorization: 'token ' + mos.access_token
+					}
+				});
+				console.log('xpupdate:', xpupdate);
+				if (xpupdate.xhr.status !== 200) {
+					throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
+				} else {
+					let { content:{sha:file_sha} } = xpupdate.xhr.response;
+					delete new_pref_hotkey.command.base_file_sha;
+					delete new_pref_hotkey.command.changes_since_base;
+					new_pref_hotkey.command.file_sha = file_sha;
+				}
 			}
 		}
 
@@ -1029,7 +1033,8 @@ let Controls = React.createClass({
 				}
 			};
 
-			let pref_hotkeys = store.getState().stg.pref_hotkeys;
+			let state = store.getState();
+			let { pref_hotkeys } = state.stg;
 
 			// is new creation? or edit?
 			let page = page_history[page_history.length-1];
@@ -1037,7 +1042,7 @@ let Controls = React.createClass({
 
 			let isreallyedited = false;
 			if (isedit) {
-				let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
+				let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
 
 				// test if anything changed - and if it wasnt, then take into newhotkey reference to it
 				if (JSON.stringify(newhotkey.command.content) != JSON.stringify(pref_hotkey.command.content)) {
@@ -1056,22 +1061,28 @@ let Controls = React.createClass({
 					if (!islocal) {
 						// ok is gitfile
 
+						let { command:newcommand } = newhotkey
+						let { content:newcontent } = newcommand;
+
+						let { command } = pref_hotkey;
+						let { content } = command;
+
 						// set `base_file_sha` on `newhotkey`
-						let { file_sha, base_file_sha } = pref_hotkey.command;
-						if (!file_sha && !base_file_sha) throw 'how is this a gitfile (not local) and doesnt have a file_sha??';
-						newhotkey.command.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
-						// delete newhotkey.command.file_sha; // i never copied this from pref_hotkey so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
+						let { file_sha, base_file_sha } = command;
+						if (!file_sha && !base_file_sha) throw 'how is this isgitfile (not islocal) and doesnt have a file_sha??';
+						newcommand.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
+						// delete newcommand.file_sha; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
 
 						// set `changes_since_base` on `newhotkey`
 						// what more changed since last (FIRST or SECOND+)?
-						let { changes_since_base:[] } = pref_hotkey.command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
+						let { changes_since_base=[] } = command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
 						for (let change_type of ['group', 'locale', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes_since_base` and `field` is the keys in `content` of gitfile
-							if (JSON.stringify(newhotkey.command.content[change_type]) != JSON.stringify(pref_hotkey.command.content[change_type])) {
+							if (JSON.stringify(newcontent[change_type]) != JSON.stringify(content[change_type])) {
 								changes_since_base.push(change_type);
 							}
 						}
-						let changes_since_base_nodupes = new Set(...changes_since_base);
-						newhotkey.command.changes_since_base = changes_since_base_nodupes.sort(); // sorts and returns by reference // keep changes_since_base sorted per link98393
+						let nodupes = new Set(changes_since_base);
+						newcommand.changes_since_base = [...nodupes].sort(); // sorts and returns by reference // keep changes_since_base sorted per link98393
 
 					}
 				}
@@ -1082,7 +1093,7 @@ let Controls = React.createClass({
 			if (isreallyedited) {
 				// pref_hotkeys[edit_pref_hotkey_ix] = newhotkey; // dont do this, we want to change the reference to the array entry, so we create new array below with .map
 				let newstg = {
-					...store.getState().stg,
+					...state.stg,
 					pref_hotkeys: pref_hotkeys.map(a_pref_hotkey => a_pref_hotkey.filename == newhotkey.filename ? newhotkey : a_pref_hotkey)
 				};
 
@@ -1100,7 +1111,7 @@ let Controls = React.createClass({
 			} else if (!isedit) {
 				// so iscreate = true
 				let newstg = {
-					...store.getState().stg,
+					...state.stg,
 					pref_hotkeys: [...pref_hotkeys, newhotkey]
 				};
 
