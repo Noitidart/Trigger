@@ -559,10 +559,26 @@ let Page = React.createClass({
 								return;
 							}
 
+							// get install counts
+							let installs;
+							try {
+								let xp = await xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=getcount', { restype:'json' }); // can throw
+								let { xhr:{status, response} } = xp;
+								if (status !== 200) throw xp; // can throw
+								commits = response;
+							} catch(err) {
+								let extra_reason = 'Failed to get install counts from server';
+								let error = {err, extra_reason};
+								console.error('error:', error);
+								gCommunityData = { error }
+								reload('community');
+								return;
+							}
+
 							// get commits - used for history and statistics
 							let commits;
 							try {
-								let xp = await xhrPromise('http://api.github.com/repos/Noitidart/Trigger-Community/commits', { restype:'json' }); // can throw
+								let xp = await xhrPromise('http://api.github.com/repos/Noitidart/Trigger-Community/commits?per_page=1000000', { restype:'json' }); // can throw
 								let { xhr:{status, response} } = xp;
 								if (status !== 200) throw xp; // can throw
 								commits = response;
@@ -577,10 +593,15 @@ let Page = React.createClass({
 							// clean out commits
 							commits = commits.reduce((acc, el) => {
 								let commit = {
+									commit_sha: el.sha,
 									name: el.committer.login, // name of author
 									date: new Date(el.commit.committer.date),
 									message: el.commit.message
 								};
+
+								// to get the contents of the file at thsi point see - http://stackoverflow.com/a/16707165/1828637
+								// so i will not do this until the user clicks "Version"
+
 
 								if (commit.name == 'web-flow') return acc; // this is a PR merge, `el.commit.author.name` will be "Noitidart" discard // `el.commit.comitter.name` will be "Github"
 
@@ -947,6 +968,7 @@ let Hotkey = React.createClass({
 				let commit_message = {
 					type: 'new',
 					filename: newfilename,
+					date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
 					code:1,
 					group:1,
 					locale: {
@@ -954,6 +976,7 @@ let Hotkey = React.createClass({
 						// a: Object.keys(pref_hotkey.command.content.locale).filter( locale => (pref_hotkey.command.content.locale[locale].name || pref_hotkey.command.content.locale[locale].description) ) // remove if both name AND desc are blank // TODO: when i implement locales, this removal should be redundant, as if both are blank, i should not insert it into the `command.content.locale` object
 					}
 				};
+				console.log('commit_message:', commit_message);
 
 				let xpcreate = await xhrPromise({
 					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
@@ -984,7 +1007,7 @@ let Hotkey = React.createClass({
 
 				prtitle = 'Update command ' + Object.keys(pref_hotkey.command.changes_since_base).sort().join(', ');
 
-				// step 3b.1 get sha of file -filetype.json
+				// step 3b.1 get sha of file
 				let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
 				console.log('xpsha:', xpsha);
 				if (xpsha.xhr.status === 404) {
@@ -1005,8 +1028,10 @@ let Hotkey = React.createClass({
 				let commit_message = {
 					type: 'update',
 					filename,
+					date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
 					...pref_hotkey.command.changes_since_base
 				};
+				console.log('commit_message:', commit_message);
 
 				let xpupdate = await xhrPromise({
 					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
@@ -1585,6 +1610,9 @@ function xhrPromise(url, opt={}) {
 		method: 'GET',
 		data: undefined,
 		headers: {},
+		timeout: 0, // integer, milliseconds, 0 means never timeout, value is in milliseconds
+		onprogress: undefined, // set to callback you want called
+		onuploadprogress: undefined, // set to callback you want called
 		// odd options
 		reject: true,
 		fdhdr: false, // stands for "Form Data Header" set to true if you want it to add Content-Type application/x-www-form-urlencoded
@@ -1595,6 +1623,8 @@ function xhrPromise(url, opt={}) {
 
 	return new Promise( (resolve, reject) => {
 		let xhr = new XMLHttpRequest();
+
+		if (opt.timeout) xhr.timeout = opt.timout;
 
 		let evf = f => ['load', 'error', 'abort', 'timeout'].forEach(f);
 
@@ -1618,6 +1648,9 @@ function xhrPromise(url, opt={}) {
 		};
 
 		evf(m => xhr.addEventListener(m, handler, false));
+
+		if (opt.onprogress) xhr.addEventListener('progress', opt.onprogress, false);
+		if (opt.onuploadprogress) xhr.upload.addEventListener('progress', opt.onuploadprogress, false);
 
 		xhr.open(opt.method, url, true);
 
@@ -1831,4 +1864,71 @@ class PromiseBasket {
 	}
 }
 
+async function getUnixTime(opt) {
+	// retry_cnt is used for times to retry each each server
+	opt = {
+		timeout: 10000,
+		compensate: true, // subtracts half of the xhr request time from the time extracted from page
+		...opt
+	};
+
+	let servers = [
+		{
+			name: 'CurrentTimestamp.com',
+			xhropt: {
+				url: 'http://currenttimestamp.com/'
+			},
+			xhrthen: ({response, status}) => {
+				if (status !== 200) throw `Unhandled Status (${status})`;
+
+				let extract = /current_time = (\d+);/.exec(response);
+				if (!extract) throw 'Extraction Failed';
+
+				let unix_ms = extract[1] * 1000;
+				return unix_ms;
+			}
+		},
+		{
+			name: 'convert-unix-time.com',
+			xhropt: {
+				url: 'http://convert-unix-time.com/'
+			},
+			xhrthen: ({response, status}) => {
+				if (status !== 200) throw `Unhandled Status (${status})`;
+
+				let extract = /currentTimeLink.*?(\d{10,})/.exec(response);
+				if (!extract) throw 'Extraction Failed';
+
+				let unix_ms = extract[1] * 1000;
+				return unix_ms;
+			}
+		}
+	];
+
+	let errors = [];
+	for (let { xhropt, name, xhrthen } of servers) {
+		try {
+			let start = Date.now();
+			let xpserver = await xhrPromise({ ...xhropt, timeout:opt.timeout });
+			let duration = Date.now() - start;
+			let halfduration = Math.round(duration / 2);
+
+			let unix_ms = xhrthen(xpserver.xhr);
+
+			if (opt.compensate) unix_ms -= halfduration;
+
+			return unix_ms;
+		} catch(ex) {
+			if (typeof(ex) == 'string') ex = ex
+			else if (ex && typeof(ex) == 'object' && ex.xhr && ex.reason) ex = 'XHR ' + ex.reason
+			else ex = ex.toString();
+
+			errors.push(`Server "${name}" Error: ` + ex);
+
+			continue;
+		}
+	}
+
+	throw errors;
+}
 // end - cmn
