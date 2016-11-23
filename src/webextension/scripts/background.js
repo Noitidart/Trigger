@@ -287,7 +287,8 @@ function startupBrowserAction() {
 	}
 }
 function onBrowserActionClicked() {
-	console.log('opening menu.html now');
+	console.log('opening menu.html now', nub.path.webext);
+	// addTab(nub.path.webext);
 	addTab(nub.path.pages + 'app.html');
 }
 // end - browseraction
@@ -464,6 +465,51 @@ browser.webRequest.onBeforeRequest.addListener(oauthWebRequestListener, { urls:[
 browser.webNavigation.onCommitted.addListener(oauthWebRequestListener); // when offline it works which is interesting. because when online it seems the request goes through in the back // catches when user goes to reauth page but is redirected immediately because they already had approved the app in the past
 // end - oauth stuff
 
+// // about page
+// var aboutPageTabIds = {}
+// function aboutPageListenerNavigate({url, tabId:tabid}) {
+// 	if (!url.startsWith(nub.path.webext)) return;
+//
+// 	if (tabid === -1) return;
+//
+// 	let redirurl = nub.path.pages + 'app.html';
+// 	console.error('doing redir now');
+//
+// 	aboutPageTabIds[tabid] = setTimeout(()=> {
+// 		console.log('doing redir now as push state did not happen');
+// 		delete aboutPageTabIds[tabid];
+// 		chrome.tabs.update(tabid, { url:redirurl });
+// 	}, 400);
+//
+// }
+// function aboutPageListenerHistory({url, tabId:tabid}) {
+// 	if (tabid === -1) return;
+// 	aboutPageTabIds[tabid] = setTimeout(()=> {
+// 		delete aboutPageTabIds[tabid];
+// 	}, 400); // allow 400ms for onDOMContentLoaded to fire
+// 	// if (tabid in aboutPageTabIds) {
+// 	// 	clearTimeout(aboutPageTabIds[tabid]);
+// 	// 	delete aboutPageTabIds[tabid];
+// 	// }
+// }
+// function aboutPageListenerLoaded({url, tabId:tabid}) {
+// 	if (tabid === -1) return;
+// 	if (tabid in aboutPageTabIds) {
+// 		// had push state so no need
+// 		console.log('DONT redir');
+// 		clearTimeout(aboutPageTabIds[tabid]);
+// 		delete aboutPageTabIds[tabid];
+// 	} else {
+// 		// no history push, so do redir
+// 		console.log('do redir');
+// 		let redirurl = nub.path.pages + 'app.html';
+// 		chrome.tabs.update(tabid, { url:redirurl });
+// 	}
+// }
+// // browser.webNavigation.onBeforeNavigate.addListener(aboutPageListenerNavigate);
+// browser.webNavigation.onHistoryStateUpdated.addListener(aboutPageListenerHistory);
+// browser.webNavigation.onDOMContentLoaded.addListener(aboutPageListenerLoaded);
+// end - about page
 // start - polyfill for android
 function browserActionSetTitle(title) {
 	if (nub.platform.os != 'android') {

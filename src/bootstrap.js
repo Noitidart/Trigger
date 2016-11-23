@@ -28,7 +28,6 @@ function uninstall(aData, aReason) {
 }
 
 function startup(aData, aReason) {
-	// Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/polyfill.min.js'); // not needed because of `#includetop 'babel-polyfill'`
 	Services.scriptloader.loadSubScript('chrome://' + CHROMEMANIFESTKEY + '/content/webextension/scripts/3rd/comm/webext.js');
 
 	gBgComm = new Comm.server.webext(aData.webExtension); // starts up the webext

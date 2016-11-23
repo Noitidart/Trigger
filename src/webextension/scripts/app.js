@@ -8,7 +8,6 @@ let nub;
 let store;
 
 let gSupressUpdateHydrantOnce;
-let gAppPageComponents = [];
 
 async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
@@ -23,17 +22,16 @@ async function init() {
 	if (app) {
 		if (hydrant) objectAssignDeep(hydrant, data.hydrant); // dont update hydrant if its undefined, otherwise it will screw up all default values for redux
 		store = Redux.createStore(app);
-
-		if (hydrant) store.subscribe(shouldUpdateHydrant);
+		// if (hydrant) store.subscribe(shouldUpdateHydrant); // manually handle setting hydrant
 	}
 
-	await Promise.all([initAppPage()]);
+	window.history.replaceState({trigger:'origin'}, browser.i18n.getMessage('addon_name'), '/');
+	// window.history.replaceState({trigger:'origin'}, browser.i18n.getMessage('addon_name'), '/edit/11111111');
+	console.error('currentLocation on init:', uneval(ReactRouter.browserHistory.getCurrentLocation()));
 
 	// render react
 	ReactDOM.render(
-		React.createElement(ReactRedux.Provider, { store },
-			React.createElement(App)
-		),
+		React.createElement(Root),
 		document.body
 	);
 
@@ -45,71 +43,7 @@ window.addEventListener('DOMContentLoaded', init, false);
 
 // app page stuff
 function focusAppPage() {
-	console.log('focused!!!!!!');
-}
-
-function initAppPage() {
-	gAppPageComponents = [
-		React.createElement(HeaderContainer),
-		React.createElement(ControlsContainer),
-		React.createElement('hr'),
-		React.createElement(PageContainer),
-		React.createElement('hr')
-	];
-}
-
-function uninitAppPage() {
-
-}
-
-async function shouldUpdateHydrant() {
-	return;
-
-	console.log('in shouldUpdateHydrant');
-
-	var state = store.getState();
-
-	// check if hydrant updated
-	var hydrant_updated = false;
-	var pending_stg_update = {};
-	for (var p in hydrant) {
-		var is_different = React.addons.shallowCompare({props:hydrant[p]}, state[p]);
-		if (is_different) {
-			console.log('something in', p, 'of hydrant was updated');
-			hydrant_updated = true;
-
-			if (!gSupressUpdateHydrantOnce) {
-				// update file storages or whatever storage this key in hydrant is connected to
-
-				if (hydrant.stg && p in hydrant.stg) {
-					pending_stg_update[p] = state[p];
-				} else if (p == 'addon_info') {
-					// make sure it is just applyBackgroundUpdates, as i only support changing applyBackgroundUpdates
-					if (hydrant.addon_info.applyBackgroundUpdates !== state.addon_info.applyBackgroundUpdates) {
-						callInBootstrap('setApplyBackgroundUpdates', state.addon_info.applyBackgroundUpdates);
-					}
-				}
-			}
-			console.log('compared', p, 'is_different:', is_different, 'state:', state[p], 'hydrant:', hydrant[p]);
-			hydrant[p] = state[p];
-			// break; // dont break because we want to update the hydrant in this global scope for future comparing in this function.
-		}
-	}
-
-	if (gSupressUpdateHydrantOnce) {
-		console.log('hydrant update supressed once');
-		gSupressUpdateHydrantOnce = false;
-		return;
-	} else {
-		if (pending_stg_update) {
-			var aKeys = await callInBackground('storageCall', { aArea: 'local', aAction: 'set', aKeys: pending_stg_update})
-			for (let setkey in aKeys) {
-				if (setkey in nub.stg) nub.stg[setkey] = aKeys[setkey];
-			}
-		}
-	}
-
-	console.log('done shouldUpdateHydrant');
+	// console.log('focused!!!!!!');
 }
 
 let hydrant = {
@@ -131,13 +65,6 @@ const GROUPS = [ // command groups
 // ACTIONS
 const SET_MAIN_KEYS = 'SET_MAIN_KEYS';
 
-const SET_STG = 'SET_STG';
-const SET_STGS = 'SET_STGS';
-
-const LOAD_PAGE = 'LOAD_PAGE';
-const PREV_PAGE = 'PREV_PAGE';
-const RELOAD_IF_PAGE = 'RELOAD_IF_PAGE';
-
 // ACTION CREATORS
 function setMainKeys(obj_of_mainkeys) {
 	return {
@@ -146,105 +73,68 @@ function setMainKeys(obj_of_mainkeys) {
 	}
 }
 
-function setStg(name, val) {
-	return {
-		type: SET_STG,
-		name,
-		val
-	}
-}
-function setStgs(namevals) {
-	return {
-		type: SET_STGS,
-		namevals
-	}
-}
-
-function prevPage() {
-	return {
-		type: PREV_PAGE
-	}
-}
-function loadPage(name) {
-	// name is page name
-	return {
-		type: LOAD_PAGE,
-		name
-	}
-}
-function reloadPageIf(name) {
-	return {
-		type: RELOAD_IF_PAGE,
-		name
-	}
-}
-
 // REDUCERS
-function stg(state=hydrant.stg, action) {
+function hotkeys(state=hydrant.stg.pref_hotkeys, action) {
 	switch (action.type) {
-		case SET_STG:
-			let { name, val } = action;
-			return {
-				...state,
-				[name]: val
-			};
-		case SET_STGS:
-			let { namevals } = action;
-			return {...state, ...namevals};
 		case SET_MAIN_KEYS:
-			let { obj_of_mainkeys } = action;
-			let mainkey = 'stg';
-			return (mainkey in obj_of_mainkeys ? obj_of_mainkeys[mainkey] : state);
-		default:
-			return state;
-	}
-}
-function page_history(state=['my_hotkeys'], action) {
-	switch (action.type) {
-		case SET_MAIN_KEYS: {
-			let { obj_of_mainkeys } = action;
-			let mainkey = 'page_history';
-			return (mainkey in obj_of_mainkeys ? obj_of_mainkeys[mainkey] : state);
-		}
-		case LOAD_PAGE: {
-			let { name } = action;
-			return [...state, name];
-		}
-		case PREV_PAGE: {
-			let newhistory = [...state];
-			newhistory.pop();
-			return newhistory;
-		}
-		case RELOAD_IF_PAGE: {
-			let { name } = action;
-			let curpage = state[state.length-1];
-			if (curpage == name) {
-				return [...state];
-			} else {
-				return state;
-			}
-		}
+			const reducer = 'hotkeys';
+			let { [reducer]:reduced } = action.obj_of_mainkeys;
+			return reduced || state;
+			// let mainkey = 'hotkeys';
+			// let { obj_of_mainkeys } = action;
+			// return (mainkey in obj_of_mainkeys ? obj_of_mainkeys[mainkey] : state);
 		default:
 			return state;
 	}
 }
 
-function editing(state=null, action) {
-	// state is hotkey filename
+function oauth(state=hydrant.stg.mem_oauth, action) {
 	switch (action.type) {
 		case SET_MAIN_KEYS:
-			let { obj_of_mainkeys } = action;
-			let mainkey = 'editing';
-			return (mainkey in obj_of_mainkeys ? obj_of_mainkeys[mainkey] : state);
+			const reducer = 'oauth';
+			let { [reducer]:reduced } = action.obj_of_mainkeys;
+			return reduced || state;
 		default:
 			return state;
 	}
 }
+
+function pagedata(state={}, action) {
+	switch (action.type) {
+		case SET_MAIN_KEYS:
+			const reducer = 'pagedata';
+			let { [reducer]:reduced } = action.obj_of_mainkeys;
+			return reduced || state;
+		default:
+			return state;
+	}
+}
+
+// my goal is, everytime `hist` changes, it should change the page
+function hist(state=[], action) {
+	console.error('hist reducer, state:', uneval(state), uneval(ReactRouter.browserHistory.getCurrentLocation()));
+	switch (action.type) {
+		case SET_MAIN_KEYS:
+			const reducer = 'hist';
+			let { [reducer]:newstate } = action.obj_of_mainkeys;
+
+			if (newstate)
+				if (state.length) ReactRouter.browserHistory.push(newstate[newstate.length-1]);
+				// else - just update the state, it should be one entry, and it is the first incoming from first render due to ReactRouter
+
+			return newstate || state;
+		default:
+			return state;
+	}
+}
+
+
 
 let app = Redux.combineReducers({
-	stg,
-	page_history, // string; enum[my_hotkeys,add_command,community,edit_command,create_command]
-	editing // only respected if page is edit_command
+	hist,
+	hotkeys,
+	oauth,
+	pagedata
 });
 
 /* HotkeyStruct -
@@ -253,37 +143,165 @@ let app = Redux.combineReducers({
 	combo: [], // remote_htk does not have
 	filename: '', // generated based on filename's available on server // just a random hash // if not yet verified with server (meaning not yet shared) this is prefexed with `_`
 	// code is in filename_code.js
-	command: {
-		file_sha, // not there if edited & unshared edits
-		base_file_sha, // only there if edited & unshared edits
-		changes_since_base: {'group':1, 'locale':{a:[],r:[],u:[]}, 'code':1} // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
-		content: {
-			group:
-			locale: {
-				'en-US': {
-					name, description
-				}
-			},
-			code: {
-				exec // in future, maybe `init, uninit`
+	command: CommandStruct
+}
+*/
+/* CommandStruct
+{
+	file_sha, // not there if edited & unshared edits
+	base_file_sha, // only there if edited & unshared edits
+	changes_since_base: {'group':1, 'locale':{a:[],r:[],u:[]}, 'code':1} // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
+	content: {
+		group:
+		locale: {
+			'en-US': {
+				name, description
 			}
+		},
+		code: {
+			exec // in future, maybe `init, uninit`
 		}
 	}
 }
 */
 
 // REACT COMPONENTS - PRESENTATIONAL
-let App = React.createClass({
-	render() {
+const Root = () => React.createElement(ReactRedux.Provider, { store },
+	React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
+		React.createElement(ReactRouter.Route, { path:'/', component:App },
+			React.createElement(ReactRouter.IndexRoute, { component:PageMyHotkeys },
+				React.createElement(ReactRouter.Route, { path:'edit/(:filename)', component:PageCommandForm }),
+				React.createElement(ReactRouter.Route, { path:'versions/(:filename)', component:PageVersions }),
+				React.createElement(ReactRouter.Route, { path:'add', component:PageAddCommand },
+					React.createElement(ReactRouter.Route, { path:'browse', component:PageCommunity }),
+					React.createElement(ReactRouter.Route, { path:'create', component:PageCommandForm })
+				)
+			),
+			React.createElement(ReactRouter.Route, { path:'*', component:PageInvalid })
+		)
+	)
+);
 
-		let app_components = [
-			// 'HEADER',
-			...gAppPageComponents
-			// 'FOOTER'
-		];
+let App = React.createClass({
+	displayName: 'App',
+	render() {
+		let { children } = this.props;
 
 		return React.createElement('div', { id:'app', className:'app container' },
-			app_components
+			React.createElement(HeaderContainer),
+			children
+			// React.createElement(ControlsContainer),
+			// React.createElement('hr'),
+			// React.createElement(PageContainer),
+			// React.createElement('hr')
+		);
+	}
+});
+// start - Header
+let Header = React.createClass({
+	displayName: 'Header',
+	render() {
+		let { hist } = this.props; // mapped state
+
+		return React.createElement('div', undefined, 'header');
+
+		// let crumbs = [];
+		// for (let pagename of page_history) {
+		// 	if (pagename != 'my_hotkeys') {
+		// 		crumbs.push(
+		// 			React.createElement('small', { style:{whiteSpace:'normal'} },
+		// 				' > '
+		// 			)
+		// 		);
+		// 	}
+		//
+		// 	crumbs.push(
+		// 		React.createElement('small', undefined,
+		// 			pagename
+		// 		)
+		// 	);
+		// }
+		//
+		// return React.createElement('div', { className:'row' },
+		// 	React.createElement('div', { className:'col-lg-12' },
+		// 		React.createElement('h1', { className:'page-header' },
+		// 			'Trigger',
+		// 			' ',
+		// 			...crumbs
+		// 		)
+		// 	)
+		// );
+	}
+});
+const HeaderContainer = ReactRedux.connect(
+	function(state, ownProps) {
+		return {
+			hist: state.hist
+		}
+	}
+)(Header);
+// end - Header
+// start - PageMyHotkeys and related components
+const PageMyHotkeys = React.createClass({
+	displayName: 'PageMyHotkeys',
+	render() {
+		let { params } = this.props;
+		console.log('params:', params);
+
+		return React.createElement('div', undefined,
+			'PageMyHotkeys'
+		);
+	}
+});
+// end - PageMyHotkeys
+// start - PageCommandForm
+let PageCommandForm = React.createClass({
+	displayName: 'PageCommandForm',
+	render() {
+		return React.createElement('div', undefined,
+			'PageCommandForm'
+		);
+	}
+});
+// end - PageCommandForm
+// start - PageVersions
+let PageVersions = React.createClass({
+	displayName: 'PageVersions',
+	render() {
+		return React.createElement('div', undefined,
+			'PageVersions'
+		);
+	}
+});
+// end - PageVersions
+// start - PageAddCommand
+let PageAddCommand = React.createClass({
+	displayName: 'PageAddCommand',
+	render() {
+		return React.createElement('div', undefined,
+			'PageAddCommand'
+		);
+	}
+});
+// end - PageAddCommand
+// start - PageCommunity
+let PageCommunity = React.createClass({
+	displayName: 'PageCommunity',
+	render() {
+		return React.createElement('div', undefined,
+			'PageCommunity'
+		);
+	}
+});
+// end - PageCommunity
+let PageInvalid = React.createClass({
+	displayName: 'PageInvalid',
+	render() {
+		let { params } = this.props;
+		console.log('params:', params);
+
+		return React.createElement('div', undefined,
+			'PageInvalid'
 		);
 	}
 });
@@ -827,40 +845,6 @@ let LocalePicker = React.createClass({
 		// );
 	}
 })
-
-let Header = React.createClass({
-	displayName: 'Header',
-	render() {
-		let { page_history } = this.props; // mapped state
-
-		let crumbs = [];
-		for (let pagename of page_history) {
-			if (pagename != 'my_hotkeys') {
-				crumbs.push(
-					React.createElement('small', { style:{whiteSpace:'normal'} },
-						' > '
-					)
-				);
-			}
-
-			crumbs.push(
-				React.createElement('small', undefined,
-					pagename
-				)
-			);
-		}
-
-		return React.createElement('div', { className:'row' },
-			React.createElement('div', { className:'col-lg-12' },
-				React.createElement('h1', { className:'page-header' },
-					'Trigger',
-					' ',
-					...crumbs
-				)
-			)
-		);
-	}
-});
 
 let Hotkey = React.createClass({
 	displayName: 'Hotkey',
@@ -1502,14 +1486,6 @@ let Controls = React.createClass({
 		);
 	}
 });
-
-let HeaderContainer = ReactRedux.connect(
-	function(state, ownProps) {
-		return {
-			page_history: state.page_history
-		}
-	}
-)(Header);
 
 let ControlsContainer = ReactRedux.connect(
 	function(state, ownProps) {

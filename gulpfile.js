@@ -126,7 +126,8 @@ gulp.task('import-3rdjs', ['copy'], function() {
 			'node_modules/react/dist/react-with-addons.min.js',
 			'node_modules/react-dom/dist/react-dom.min.js',
 			'node_modules/redux/dist/redux.min.js',
-			'node_modules/react-redux/dist/react-redux.min.js'
+			'node_modules/react-redux/dist/react-redux.min.js',
+			'node_modules/react-router/umd/ReactRouter.min.js'
         ])
         .pipe(gulp.dest(dest));
 });
