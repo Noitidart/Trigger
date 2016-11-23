@@ -62,14 +62,21 @@ const GROUPS = [ // command groups
 	{ id:4, text:browser.i18n.getMessage('group_keys') }
 ].sort((a,b) => a.id === 0 ? -1 : a.text.localeCompare(b.text)); // keep "Uncategorized" at top, and rest alpha
 
-// ACTIONS
+// GERNAL ACTIONS AND CREATORS
 const SET_MAIN_KEYS = 'SET_MAIN_KEYS';
-
-// ACTION CREATORS
 function setMainKeys(obj_of_mainkeys) {
 	return {
 		type: SET_MAIN_KEYS,
 		obj_of_mainkeys
+	}
+}
+
+// OAUTH ACTIONS AND CREATORS
+const FORGET_AUTH = 'FORGET_AUTH';
+function forgetAuth(serviceid) {
+	return {
+		type: FORGET_AUTH,
+		serviceid
 	}
 }
 
@@ -94,6 +101,17 @@ function oauth(state=hydrant.stg.mem_oauth, action) {
 			const reducer = 'oauth';
 			let { [reducer]:reduced } = action.obj_of_mainkeys;
 			return reduced || state;
+		case FORGET_AUTH:
+			let { serviceid } = action;
+
+			let newstate = { ...state };
+			delete newstate[serviceid];
+
+			callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:{
+				mem_oauth: newstate
+			} });
+
+			return newstate;
 		default:
 			return state;
 	}
@@ -110,28 +128,7 @@ function pagedata(state={}, action) {
 	}
 }
 
-// my goal is, everytime `hist` changes, it should change the page
-function hist(state=[], action) {
-	console.error('hist reducer, state:', uneval(state), uneval(ReactRouter.browserHistory.getCurrentLocation()));
-	switch (action.type) {
-		case SET_MAIN_KEYS:
-			const reducer = 'hist';
-			let { [reducer]:newstate } = action.obj_of_mainkeys;
-
-			if (newstate)
-				if (state.length) ReactRouter.browserHistory.push(newstate[newstate.length-1]);
-				// else - just update the state, it should be one entry, and it is the first incoming from first render due to ReactRouter
-
-			return newstate || state;
-		default:
-			return state;
-	}
-}
-
-
-
 let app = Redux.combineReducers({
-	hist,
 	hotkeys,
 	oauth,
 	pagedata
@@ -185,10 +182,11 @@ const Root = () => React.createElement(ReactRedux.Provider, { store },
 let App = React.createClass({
 	displayName: 'App',
 	render() {
-		let { children } = this.props;
+		let { location:{pathname, params}, children } = this.props; // router props
+		console.log('app props:', this.props);
 
 		return React.createElement('div', { id:'app', className:'app container' },
-			React.createElement(HeaderContainer),
+			React.createElement(Header, { pathname, params }),
 			children
 			// React.createElement(ControlsContainer),
 			// React.createElement('hr'),
@@ -201,58 +199,113 @@ let App = React.createClass({
 let Header = React.createClass({
 	displayName: 'Header',
 	render() {
-		let { hist } = this.props; // mapped state
+		let { pathname, params } = this.props;
 
-		return React.createElement('div', undefined, 'header');
+		let pathcrumbs = {
+			'/': ['myhotkeys'],
+			'/add': ['myhotkeys', 'addcommand'],
+			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
+			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
+			'/edit': ['myhotkeys', 'editcommand'],
+			'/versions': ['myhotkeys', 'commandversions']
+		};
+		let crumbs = pathcrumbs[pathname];
 
-		// let crumbs = [];
-		// for (let pagename of page_history) {
-		// 	if (pagename != 'my_hotkeys') {
-		// 		crumbs.push(
-		// 			React.createElement('small', { style:{whiteSpace:'normal'} },
-		// 				' > '
-		// 			)
-		// 		);
-		// 	}
-		//
-		// 	crumbs.push(
-		// 		React.createElement('small', undefined,
-		// 			pagename
-		// 		)
-		// 	);
-		// }
-		//
-		// return React.createElement('div', { className:'row' },
-		// 	React.createElement('div', { className:'col-lg-12' },
-		// 		React.createElement('h1', { className:'page-header' },
-		// 			'Trigger',
-		// 			' ',
-		// 			...crumbs
-		// 		)
-		// 	)
-		// );
-	}
-});
-const HeaderContainer = ReactRedux.connect(
-	function(state, ownProps) {
-		return {
-			hist: state.hist
-		}
-	}
-)(Header);
-// end - Header
-// start - PageMyHotkeys and related components
-const PageMyHotkeys = React.createClass({
-	displayName: 'PageMyHotkeys',
-	render() {
-		let { params } = this.props;
-		console.log('params:', params);
+		// localize it and wrap it <small>
+		crumbs.forEach( (crumb, i, arr) =>
+			arr[i] = React.createElement('small', { style:{whiteSpace:'no-wrap'} }, browser.i18n.getMessage('crumb_' + crumb))
+		);
 
-		return React.createElement('div', undefined,
-			'PageMyHotkeys'
+		if (crumbs.length > 1)
+			pushAlternatingRepeating(crumbs, React.createElement('small', undefined, ' > ') );
+
+		return React.createElement('div', { className:'row' },
+			React.createElement('div', { className:'col-lg-12' },
+				React.createElement('h1', { className:'page-header' },
+					'Trigger',
+					' ',
+					...crumbs
+				)
+			)
 		);
 	}
 });
+// end - Header
+// start - PageMyHotkeys and related components
+const PageMyHotkeys = ReactRedux.connect(
+	function(state, ownProps) {
+		return {
+			hotkeys: state.hotkeys
+		}
+	}
+)(React.createClass({
+		displayName: 'PageMyHotkeys',
+		render() {
+			console.log('PageMyHotkeys props:', this.props);
+
+			return React.createElement('span', undefined,
+				// controls
+				React.createElement('div', { className:'row text-center' },
+					React.createElement('div', { className:'col-lg-12' },
+
+						React.createElement(OauthManager)
+					)
+				),
+				React.createElement('hr'),
+				// content
+				React.createElement('div', { className:'row text-center' },
+					'content'
+				),
+				React.createElement('hr')
+			);
+		}
+}));
+
+const OauthManager = ReactRedux.connect(
+	function(state, ownProps) {
+		return {
+			oauth: state.oauth
+		}
+	}
+)(React.createClass({
+	displayName: 'OauthManager',
+	onRowBtnClick: function(serviceid, e) {
+		if (!stopClickAndCheck0(e)) return;
+		let { dispatch, oauth:{ [serviceid]:auth } } = this.props;
+		if (auth) {
+			// forget authorized details
+ 			dispatch(forgetAuth(serviceid));
+		} else {
+			// authorize now
+			callInBackground('openAuthTab', { serviceid });
+		}
+		e.target.blur();
+	},
+	render() {
+		let { oauth } = this.props; // mapped state
+
+		// rels.push('Manage your collection of hotkeys here. You can browse the community shared commands by click "Add" and then "Community". You can create your own custom commands and share it with the community.');
+		// rels.push(React.createElement('br'));
+		// rels.push(React.createElement('br'));
+
+		return React.createElement('div', { },
+			Object.entries(nub.oauth).map( ([serviceid, config]) => React.createElement(OauthManagerRow, { serviceid, config, auth:oauth[serviceid], onClick:this.onRowBtnClick.bind(null, serviceid) }) )
+		);
+	}
+}));
+
+const OauthManagerRow = ({serviceid, config, auth, onClick}) =>
+	// auth - authorization details for serviceid, user may not have authorized so it will be missing
+	React.createElement('div', undefined,
+		React.createElement('img', { src:`../images/${serviceid}.png`, width:'22px', height:'22px', className:'pull-left' }),
+		React.createElement('span', { className:'pull-left', style:{margin:'0 5px', fontStyle:(auth || 'italic')} },
+			(!auth ? '(no account)' : deepAccessUsingString(auth, config.dotname))
+		),
+		React.createElement('a', { href:'#', className:'btn btn-default btn-sm pull-right', onClick },
+			React.createElement('span', { className:'glyphicon glyphicon-' + (auth ? 'minus-sign' : 'plus-sign') }),
+			' ' + browser.i18n.getMessage(auth ? 'forget_account' : 'authorize_account')
+		)
+	);
 // end - PageMyHotkeys
 // start - PageCommandForm
 let PageCommandForm = React.createClass({

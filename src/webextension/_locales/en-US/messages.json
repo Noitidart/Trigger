@@ -60,6 +60,15 @@
 	"group_tabs": { "message": "Tabs" },
 	"group_websites": { "message": "Websites" },
 	"group_unique": { "message": "Unique" },
-	"group_keys": { "message": "Send Keys" }
+	"group_keys": { "message": "Send Keys" },
+
+	"crumb_myhotkeys": { "message": "My Hotkeys" },
+	"crumb_addcommand": { "message": "Add Command" },
+	"crumb_editcommand": { "message": "Editing Command: $COMMAND_NAME$", "placeholders": {"COMMAND_NAME":{"content":"$1"}} },
+	"crumb_versionscommand": { "message": "Command Versions: $COMMAND_NAME$", "placeholders": {"COMMAND_NAME":{"content":"$1"}} },
+	"crumb_community": { "message": "Community" },
+
+	"forget_account": { "message": "Forget Account" },
+	"authorize_account": { "message": "Authorize Account" }
 
 }
