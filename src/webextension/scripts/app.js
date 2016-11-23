@@ -28,9 +28,9 @@ async function init() {
 		// if (hydrant) store.subscribe(shouldUpdateHydrant); // manually handle setting hydrant
 	}
 
-	window.history.replaceState({trigger:'origin'}, browser.i18n.getMessage('addon_name'), '/');
+	window.history.replaceState({key:'trigger'}, browser.i18n.getMessage('addon_name'), '/');
 	// window.history.replaceState({trigger:'origin'}, browser.i18n.getMessage('addon_name'), '/edit/11111111');
-	console.error('currentLocation on init:', uneval(ReactRouter.browserHistory.getCurrentLocation()));
+	// console.error('currentLocation on init:', uneval(ReactRouter.browserHistory.getCurrentLocation()));
 
 	// render react
 	ReactDOM.render(
@@ -68,7 +68,7 @@ const GROUPS = [ // command groups
 	{ id:4, text:browser.i18n.getMessage('group_keys') }
 ].sort((a,b) => a.id === 0 ? -1 : a.text.localeCompare(b.text)); // keep "Uncategorized" at top, and rest alpha
 
-// GERNAL ACTIONS AND CREATORS
+// GERNAL ACTIONS AND CREATORS - no specific reducer because each reducer will respect these actions
 const SET_MAIN_KEYS = 'SET_MAIN_KEYS';
 function setMainKeys(obj_of_mainkeys) {
 	return {
@@ -77,16 +77,112 @@ function setMainKeys(obj_of_mainkeys) {
 	}
 }
 
-// OAUTH ACTIONS AND CREATORS
-const FORGET_AUTH = 'FORGET_AUTH';
-function forgetAuth(serviceid) {
+// PAGES_STATE ACTIONS AND CREATORS AND REDUCER
+// clearPageStates
+const CLEAR_PAGE_STATES_IF_CHANGED = 'CLEAR_PAGE_STATES_IF_CHANGED';
+function clearPageStates(pathnames) {
+	// pathnames can be a single pathname, so a string, else an array of strings
+	if (typeof(pathnames) == 'string')
+		pathnames = [pathnames];
+
 	return {
-		type: FORGET_AUTH,
-		serviceid
+		type: CLEAR_PAGE_STATES_IF_CHANGED,
+		pathnames
+	};
+}
+
+// loadPage - clears any saved state for the new path to load
+function loadPage(pathname) {
+	// TODO: MAYBE: namevalues - what to set the pagestate to before loading, it replaces the old state with this one
+
+	store.dispatch(clearPageStates(pathname));
+
+	// i dont think i need async, as the store.dispatch should complete everything synchronously
+	// setTimeout(()=>ReactRouter.browserHistory.push(pathname), 0); // setTimeout so that it happens after the redux state is update is comitted, as that should happen synchronously from here // link393485
+	ReactRouter.browserHistory.push(pathname);
+
+}
+
+// loadOldPage - load a previously loaded page, without clearing pages_state
+function loadOldPage(pathname) {
+	// TODO: with my current pages_state logic, if an old page occurs twice in the history, it will have the same data, i should fix that in the future
+		// i also in this, erase the data of the first time it occurs in reverse, so the first instance in forwards, will have no data in pages_state
+
+	ReactRouter.browserHistory.push(pathname);
+}
+
+// modPageState - modify a piece(s) of state within the page
+const MODIFY_PAGE_STATE_IF_CHANGED = 'MODIFY_PAGE_STATE_IF_CHANGED';
+function modPageState(pathname, namevalues, value) {
+	// namevalues is object of names and values OR just string of name
+	// link383991 NOTE: to remove something set value to undefined
+	if (typeof(namevalues) == 'string')
+		namevalues = { [namevalues]: value }
+
+	if (!Object.keys(namevalues).length) throw 'ERROR(modPageState): namevalues must have at least one key';
+
+	console.log('in modPageState');
+
+	return {
+		type: MODIFY_PAGE_STATE_IF_CHANGED,
+		pathname,
+		namevalues
 	}
 }
 
-// REDUCERS
+// reducer
+function pages_state(state={}, action) {
+	switch (action.type) {
+		case SET_MAIN_KEYS: {
+			const reducer = 'pages_state';
+			let { [reducer]:reduced } = action.obj_of_mainkeys;
+			return reduced || state;
+		}
+		case CLEAR_PAGE_STATES_IF_CHANGED: {
+			let { pathnames } = action;
+
+			let newstate_isnew = false;
+			let newstate = {...state};
+			for (let pathname of pathnames) {
+				if (pathname in newstate) {
+					newstate_isnew = true;
+					delete newstate[pathname];
+				}
+				// else - this pathname never had any pagestate saved, so no change, meaning newstate_isNOTnew because of this
+			}
+
+			return newstate_isnew ? newstate : state;
+		}
+		case MODIFY_PAGE_STATE_IF_CHANGED: {
+			let { pathname, namevalues } = action;
+			let pagestate = state[pathname];
+
+			let orignamevalues = JSON.parse(JSON.stringify(namevalues)); // debug
+
+			let newstate;
+			if (!pagestate) {
+				newstate = { ...state, [pathname]:namevalues };
+			} else {
+				// this is why when you want to remove something from pagestate you must set to undefined link383991
+				for (let [name, newvalue] of Object.entries(namevalues))
+					if (pagestate[name] === newvalue)
+						delete namevalues[name];
+
+				if (Object.keys(namevalues).length)
+					newstate = { ...state, [pathname]:{pagestate, ...namevalues} }; // and also this why link383991
+			}
+
+			if (!newstate) console.warn('WARN modPageState: Nothing changed in page state of ' + pathname + '. Passed namevalues:', orignamevalues);
+			else console.log('OK modPageState: Something changed in page state of ' + pathname + '. new pagestate:', newstate[pathname], 'old pagestate:', pagestate);
+
+			return newstate || state;
+		}
+		default:
+			return state;
+	}
+}
+
+// HOTKEYS ACTIONS AND CREATORS AND REDUCER
 function hotkeys(state=hydrant.stg.pref_hotkeys, action) {
 	switch (action.type) {
 		case SET_MAIN_KEYS:
@@ -101,6 +197,14 @@ function hotkeys(state=hydrant.stg.pref_hotkeys, action) {
 	}
 }
 
+// OAUTH ACTIONS AND CREATORS AND REDUCER
+const FORGET_AUTH = 'FORGET_AUTH';
+function forgetAuth(serviceid) {
+	return {
+		type: FORGET_AUTH,
+		serviceid
+	}
+}
 function oauth(state=hydrant.stg.mem_oauth, action) {
 	switch (action.type) {
 		case SET_MAIN_KEYS:
@@ -123,21 +227,10 @@ function oauth(state=hydrant.stg.mem_oauth, action) {
 	}
 }
 
-function pagedata(state={}, action) {
-	switch (action.type) {
-		case SET_MAIN_KEYS:
-			const reducer = 'pagedata';
-			let { [reducer]:reduced } = action.obj_of_mainkeys;
-			return reduced || state;
-		default:
-			return state;
-	}
-}
-
 let app = Redux.combineReducers({
 	hotkeys,
 	oauth,
-	pagedata
+	pages_state
 });
 
 /* HotkeyStruct -
@@ -581,7 +674,7 @@ let HotkeyAdd = React.createClass({
 	displayName: 'HotkeyAdd',
 	loadAdd(e) {
 		if (!stopClickAndCheck0(e)) return;
-		ReactRouter.browserHistory.push('/add');
+		loadPage('/add');
 	},
 	render() {
 		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature hotkey-add' },
@@ -658,6 +751,8 @@ const OauthManagerRow = ({serviceid, config, auth, doForget, doAuth}) => {
 const PageCommandForm = ReactRedux.connect(
 	function(state, ownProps) {
 		return {
+			// NOTE: never feed in fully pagestate, like line below, just select the stuff from pagestate that this component needs
+			// pagestate: state.pages_state[ownProps.location.pathname],
 			...(ownProps.location.pathname == '/edit' ? {hotkey:state.hotkeys.find(({filename})=>ownProps.params.filename)} : {}) // hotkey
 		}
 	}
@@ -669,12 +764,6 @@ const PageCommandForm = ReactRedux.connect(
 	// }
 )(React.createClass({
 	displayName: 'PageCommandForm',
-	getInitialState() {
-		return {
-			locale: gLocale,
-			isvalid: false
-		}
-	},
 	goBack(e) {
 		if (!stopClickAndCheck0(e)) return;
 
@@ -684,24 +773,47 @@ const PageCommandForm = ReactRedux.connect(
 		if (pathname == '/add/create') backpath = '/add';
 		// else backpath = '/'; // pathname == '/edit'
 
-		ReactRouter.browserHistory.push(backpath);
+		loadOldPage(backpath);
 	},
-	validateForm() {
-		let { isvalid } = this.state; // component state
+	validateForm: async function() {
+		console.log('in validateForm');
+
 		let { hotkey } = this.props; // mapped state
 		// hotkey is undefined, unless `iseditpage` is true
 		let { location:{pathname} } = this.props; // router
 
 		let iseditpage = !!hotkey;
 
-		let newisvalid;
+		let isvalid = true; // new
 
-		// make sure none of the values are blank
+		// test to set isvalid false if soemthing blank
+		let domvalues = getFormValues(['name', 'description', 'code']);
+		for (let [domid, domvalue] of Object.entries(domvalues)) {
+			if (!domvalue.length) {
+				isvalid = false;
+				break;
+			}
+		}
 
-		// if edit, make sure at least one value is changed
+		// test to set isvalid false if something unchanged
+		if (isvalid && iseditpage) {
+			// beautify the code
+			code = await new Promise(resolve => callInBootstrap('beautifyText', { js:code }, val=>resolve(val)));
 
-		if (isvalid !== newisvalid)
-			this.setState({ isvalid:newisvalid });
+			// if edit, make sure at least one value is changed
+			Object.assign(domvalues, getFormValues(['group']));
+
+			let { group, locale:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content;
+			let hotkeyvalues = { group, name, description, code };
+
+			if(!React.addons.shallowCompare({props:hotkeyvalues}, domvalues))
+				isvalid = false;
+		}
+
+		console.log('dispatching modPageState with isvalid:', isvalid);
+
+		store.dispatch(modPageState(pathname, { isvalid })); // modPageState does the difference check, if nothing in namevalues is changed it doesnt update
+
 	},
 	beautifyCode(e) {
 		if (!stopClickAndCheck0(e)) return;
@@ -717,15 +829,16 @@ const PageCommandForm = ReactRedux.connect(
 		document.getElementById('code').value = hotkey.command.content.code.exec;
 	},
 	render() {
-		let { locale, isvalid } = this.state; // component state
-		let { hotkey } = this.props; // mapped state
+		let { hotkey, isvalid } = this.props; // mapped state
 		// hotkey is undefined, unless `iseditpage` is true
+		let { location:{pathname} } = this.props; // router
+		// pathname - needed for SaveCommandBtn so it can get `isvalid` from right `pages_state`
 		let iseditpage = !!hotkey;
 
 		// default values
 		let name, description, code, group=0; // default group "Uncategorized"
 		if (iseditpage) // take from `hotkey`
-			({ group, locale:{[locale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
+			({ group, locale:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
 
 		return React.createElement('span', undefined,
 			// controls
@@ -734,7 +847,8 @@ const PageCommandForm = ReactRedux.connect(
 					React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
 						React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
 						' ' + browser.i18n.getMessage('back')
-					)
+					),
+					React.createElement(SaveCommandBtn, { pathname, iseditpage })
 				)
 			),
 			React.createElement('hr'),
@@ -746,7 +860,7 @@ const PageCommandForm = ReactRedux.connect(
 							browser.i18n.getMessage('group')
 						),
 						React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
-						React.createElement('select', { className:'form-control', id:'group', onChange:this.validateForm, defaultValue:group },
+						React.createElement('select', { className:'form-control', id:'group', defaultValue:group, onChange:this.validateForm },
 							GROUPS.map( ({id:value, text}) => React.createElement('option', { value }, text) )
 						)
 					),
@@ -756,8 +870,8 @@ const PageCommandForm = ReactRedux.connect(
 						React.createElement('span', { className:'input-group-addon' },
 							browser.i18n.getMessage('name')
 						),
-						React.createElement('input', { className:'form-control', type:'text', id:'name', onChange:this.validateForm, defaultValue:name }),
-						React.createElement(LocalePicker)
+						React.createElement('input', { className:'form-control', type:'text', id:'name', defaultValue:name, onChange:this.validateForm }),
+						React.createElement(LocalePicker, { onChange:this.validateForm })
 					),
 
 					React.createElement('br'),
@@ -765,8 +879,8 @@ const PageCommandForm = ReactRedux.connect(
 						React.createElement('span', { className:'input-group-addon' },
 							browser.i18n.getMessage('description')
 						),
-						React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description }),
-						React.createElement(LocalePicker)
+						React.createElement('input', { className:'form-control', type:'text', id:'description', defaultValue:description, onChange:this.validateForm }),
+						React.createElement(LocalePicker, { onChange:this.validateForm })
 					),
 
 					React.createElement('br'),
@@ -786,7 +900,7 @@ const PageCommandForm = ReactRedux.connect(
 						),
 						React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
 						React.createElement('div', { className:'form-group' },
-							React.createElement('textarea', { className:'form-control', id:'code', onChange:this.validateForm, defaultValue:code, style:{resize:'vertical',minHeight:'100px'} })
+							React.createElement('textarea', { className:'form-control', id:'code', defaultValue:code, style:{resize:'vertical',minHeight:'100px'}, onChange:this.validateForm })
 						)
 					)
 				)
@@ -796,9 +910,45 @@ const PageCommandForm = ReactRedux.connect(
 	}
 }));
 
-const LocalePicker = ({ locale=gLocale }) =>
+const SaveCommandBtn = ReactRedux.connect(
+	function(state, ownProps) {
+		let { pathname } = ownProps;
+		let pagestate = state.pages_state[pathname] || {};
+
+		return {
+			isvalid: pagestate.isvalid
+		}
+	},
+	function(dispatch, ownProps) {
+		return {
+			onClick: e => {
+				if (!stopClickAndCheck0(e)) return;
+
+				let { isvalid } = this.props; // mapped state
+				if (!isvalid) return;
+
+				let { iseditpage } = this.props;
+
+				alert('clicked');
+			}
+		}
+	}
+)(React.createClass({
+	displayName: 'SaveCommandBtn',
+	render() {
+		let { iseditpage } = this.props;
+		let { isvalid } = this.props; // mapped state
+		let { onClick } = this.props; // dispatchers
+
+		return React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:!isvalid, onClick, tabIndex:(isvalid ? undefined : '-1') },
+			React.createElement('span', { className:'glyphicon glyphicon-ok' }),
+			' ' + browser.i18n.getMessage(iseditpage ? 'btn_savecommand' : 'btn_addcommand')
+		);
+	}
+}))
+const LocalePicker = ({ locale=gLocale, onChange }) =>
 	React.createElement('div', { className:'input-group-btn' },
-		React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1' },
+		React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1', onChange },
 			React.createElement('option', { value:'en-US' },
 				'English'
 			)
@@ -820,15 +970,15 @@ const PageAddCommand = React.createClass({
 	displayName: 'PageAddCommand',
 	goBack(e) {
 		if (!stopClickAndCheck0(e)) return;
-		ReactRouter.browserHistory.push('/');
+		loadOldPage.push('/');
 	},
 	loadCreate(e) {
 		if (!stopClickAndCheck0(e)) return;
-		ReactRouter.browserHistory.push('/add/create');
+		loadPage('/add/create');
 	},
 	loadBrowse(e) {
 		if (!stopClickAndCheck0(e)) return;
-		ReactRouter.browserHistory.push('/add/browse');
+		loadPage('/add/browse');
 	},
 	render() {
 
@@ -887,7 +1037,6 @@ let Page = React.createClass({
 	displayName: 'Page',
 	// functions for create_command and edit_command pages
 	validateForm() {
-		let { editing } = this.props; // mapped state
 
 		let ids = ['name', 'description', 'code'];
 		let isvalid = true;
@@ -2111,5 +2260,14 @@ async function getUnixTime(opt) {
 	}
 
 	throw errors;
+}
+function getFormValues(domids) {
+	// let domids = ['name', 'description', 'code'];
+	let domvalues = {};
+	for (let domid of domids) {
+		let domvalue = document.getElementById(domid).value.trim();
+		domvalues[domid] = domvalue;
+	}
+	return domvalues;
 }
 // end - cmn

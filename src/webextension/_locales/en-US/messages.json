@@ -79,6 +79,9 @@
 	"create_new_command": { "message": "Create New Command" },
 	"browse_community": { "message": "Community Shared Commands" },
 
+
+	"btn_addcommand": { "message": "Add Command" },
+	"btn_savecommand": { "message": "Update Command" },
 	"name": { "message": "Name" },
 	"description": { "message": "Description" },
 	"code": { "message": "Code" },
