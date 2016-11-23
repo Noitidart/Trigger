@@ -88,8 +88,14 @@ select.btn {
 	width: 75%;
 	margin: 0 auto;
 }
-
-.oauth-manager div { /* oauth-manager-row */
-	margin: 9px auto 0 auto;
-	width: 50%;
+.oauth-manager-row { /* oauth-manager-row */
+	margin-top: 12px;
+}
+.oauth-manager-row img {
+	width: 32px;
+	height: 32px;
+}
+.oauth-manager-row-spacer {
+	width: 20%;
+	display: inline-block;
 }

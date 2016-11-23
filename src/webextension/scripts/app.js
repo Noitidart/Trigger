@@ -638,12 +638,13 @@ const OauthManager = ReactRedux.connect(
 
 const OauthManagerRow = ({serviceid, config, auth, onClick}) =>
 	// auth - authorization details for serviceid, user may not have authorized so it will be missing
-	React.createElement('div', undefined,
-		React.createElement('img', { src:`../images/${serviceid}.png`, width:'22px', height:'22px', className:'pull-left' }),
-		React.createElement('span', { className:'pull-left', style:{margin:'0 5px', fontStyle:(auth || 'italic')} },
+	React.createElement('div', { className:'oauth-manager-row' },
+		React.createElement('img', { src:`../images/${serviceid}.png` }),
+		React.createElement('span', { style:{margin:'0 5px', fontStyle:(auth || 'italic')} },
 			(!auth ? '(no account)' : deepAccessUsingString(auth, config.dotname))
 		),
-		React.createElement('a', { href:'#', className:'btn btn-default btn-sm pull-right', onClick },
+		React.createElement('span', { className:'oauth-manager-row-spacer' }),
+		React.createElement('a', { href:'#', className:'btn btn-default btn-sm', onClick },
 			React.createElement('span', { className:'glyphicon glyphicon-' + (auth ? 'minus-sign' : 'plus-sign') }),
 			' ' + browser.i18n.getMessage(auth ? 'forget_account' : 'authorize_account')
 		)
