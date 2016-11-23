@@ -555,6 +555,10 @@ async function getExtLocales() {
 	return locales;
 }
 
+async function getSelectedLocale() {
+	// returns the locale in my extension, that is being used by the browser, to display my extension stuff
+	// TODO
+}
 async function getClosestAvailableLocale() {
 	// gets the locale available in my extension, that is closest to the users locale
 	// returns null if nothing close

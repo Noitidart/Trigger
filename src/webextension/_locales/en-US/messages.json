@@ -62,16 +62,29 @@
 	"group_unique": { "message": "Unique" },
 	"group_keys": { "message": "Send Keys" },
 
+	"crumb_invalid": { "message": "Invalid Page" },
 	"crumb_myhotkeys": { "message": "My Hotkeys" },
 	"crumb_addcommand": { "message": "Add Command" },
 	"crumb_editcommand": { "message": "Editing Command: $COMMAND_NAME$", "placeholders": {"COMMAND_NAME":{"content":"$1"}} },
-	"crumb_versionscommand": { "message": "Command Versions: $COMMAND_NAME$", "placeholders": {"COMMAND_NAME":{"content":"$1"}} },
+	"crumb_versionscommand": { "message": "Viewing Versions: $COMMAND_NAME$", "placeholders": {"COMMAND_NAME":{"content":"$1"}} },
 	"crumb_community": { "message": "Community" },
+	"crumb_createcommand": { "message": "Create" },
 
 	"forget_account": { "message": "Forget Account" },
 	"authorize_account": { "message": "Authorize Account" },
 
 	"myhotkeys_page_description": { "message": "From here you can add commands. You can then assign hotkeys to the commands. Commands can be written or gotten from the shared community, click the \"+\" icon to get started." },
-	"oauth_manager_description": { "message": "Github powers the community due to it's excellent version control. You can *add* commands from the community without an acccount. However, if you want to *share* your newly created or edited commands, you must grant permission." }
+	"oauth_manager_description": { "message": "Github powers the community due to it's excellent version control. You can *add* commands from the community without an acccount. However, if you want to *share* your newly created or edited commands, you must grant permission." },
+
+	"create_new_command": { "message": "Create New Command" },
+	"browse_community": { "message": "Community Shared Commands" },
+
+	"name": { "message": "Name" },
+	"description": { "message": "Description" },
+	"code": { "message": "Code" },
+	"beautify": { "message": "Beautify" },
+	"revert": { "message": "Revert" },
+
+	"back": { "message": "Back" }
 
 }

@@ -171,20 +171,18 @@ let app = Redux.combineReducers({
 const Root = () => React.createElement(ReactRedux.Provider, { store },
 	React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
 		React.createElement(ReactRouter.Route, { path:'/', component:App },
-			React.createElement(ReactRouter.IndexRoute, { component:PageMyHotkeys },
-				React.createElement(ReactRouter.Route, { path:'edit/(:filename)', component:PageCommandForm }),
-				React.createElement(ReactRouter.Route, { path:'versions/(:filename)', component:PageVersions }),
-				React.createElement(ReactRouter.Route, { path:'add', component:PageAddCommand },
-					React.createElement(ReactRouter.Route, { path:'browse', component:PageCommunity }),
-					React.createElement(ReactRouter.Route, { path:'create', component:PageCommandForm })
-				)
-			),
+			React.createElement(ReactRouter.IndexRoute, { component:PageMyHotkeys }),
+			React.createElement(ReactRouter.Route, { path:'edit/(:filename)', component:PageCommandForm }),
+			React.createElement(ReactRouter.Route, { path:'versions/(:filename)', component:PageVersions }),
+			React.createElement(ReactRouter.Route, { path:'add', component:PageAddCommand }),
+			React.createElement(ReactRouter.Route, { path:'add/browse', component:PageCommunity }),
+			React.createElement(ReactRouter.Route, { path:'add/create', component:PageCommandForm }),
 			React.createElement(ReactRouter.Route, { path:'*', component:PageInvalid })
 		)
 	)
 );
 
-let App = React.createClass({
+const App = React.createClass({
 	displayName: 'App',
 	render() {
 		let { location:{pathname, params}, children } = this.props; // router props
@@ -201,7 +199,7 @@ let App = React.createClass({
 	}
 });
 // start - Header
-let Header = React.createClass({
+const Header = React.createClass({
 	displayName: 'Header',
 	render() {
 		let { pathname, params } = this.props;
@@ -212,9 +210,9 @@ let Header = React.createClass({
 			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
 			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
 			'/edit': ['myhotkeys', 'editcommand'],
-			'/versions': ['myhotkeys', 'commandversions']
+			'/versions': ['myhotkeys', 'versionscommand']
 		};
-		let crumbs = pathcrumbs[pathname];
+		let crumbs = pathcrumbs[pathname] || ['invalid'];
 
 		// localize it and wrap it <small>
 		crumbs.forEach( (crumb, i, arr) =>
@@ -222,7 +220,7 @@ let Header = React.createClass({
 		);
 
 		if (crumbs.length > 1)
-			pushAlternatingRepeating(crumbs, React.createElement('small', undefined, ' > ') );
+			pushAlternatingRepeating(crumbs, React.createElement('small', { style:{whiteSpace:'normal'} }, ' > ') );
 
 		return React.createElement('div', { className:'row' },
 			React.createElement('div', { className:'col-lg-12' },
@@ -580,9 +578,9 @@ let Hotkey = React.createClass({
 
 let HotkeyAdd = React.createClass({
 	displayName: 'HotkeyAdd',
-	click(e) {
+	loadAdd(e) {
 		if (!stopClickAndCheck0(e)) return;
-		store.dispatch(loadPage('add_command'));
+		ReactRouter.browserHistory.push('/add');
 	},
 	render() {
 		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature hotkey-add' },
@@ -591,7 +589,7 @@ let HotkeyAdd = React.createClass({
 				React.createElement('div', { className:'caption' },
 					React.createElement('p'),
 					React.createElement('p', undefined,
-						React.createElement('a', { href:'#', className:'btn btn-default', onClick:this.click },
+						React.createElement('a', { href:'#', className:'btn btn-default', onClick:this.loadAdd },
 							React.createElement('span', { className:'glyphicon glyphicon-plus' })
 						)
 					)
@@ -607,38 +605,42 @@ const OauthManager = ReactRedux.connect(
 		return {
 			oauth: state.oauth
 		}
+	},
+	function(dispatch, ownProps) {
+		return {
+			doForget: serviceid => dispatch(forgetAuth(serviceid)),
+			doAuth: serviceid => callInBackground('openAuthTab', { serviceid })
+		}
 	}
 )(React.createClass({
 	displayName: 'OauthManager',
-	onRowBtnClick: function(serviceid, e) {
-		if (!stopClickAndCheck0(e)) return;
-		let { dispatch, oauth:{ [serviceid]:auth } } = this.props;
-		if (auth) {
-			// forget authorized details
- 			dispatch(forgetAuth(serviceid));
-		} else {
-			// authorize now
-			callInBackground('openAuthTab', { serviceid });
-		}
-		e.target.blur();
-	},
 	render() {
 		let { oauth } = this.props; // mapped state
-
+		let { doForget, doAuth } = this.props; // mapped dispatchers
 		// rels.push('Manage your collection of hotkeys here. You can browse the community shared commands by click "Add" and then "Community". You can create your own custom commands and share it with the community.');
 		// rels.push(React.createElement('br'));
 		// rels.push(React.createElement('br'));
 
 		return React.createElement('div', { className:'oauth-manager' },
 			browser.i18n.getMessage('oauth_manager_description'),
-			Object.entries(nub.oauth).map( ([serviceid, config]) => React.createElement(OauthManagerRow, { serviceid, config, auth:oauth[serviceid], onClick:this.onRowBtnClick.bind(null, serviceid) }) )
+			Object.entries(nub.oauth).map( ([serviceid, config]) => React.createElement(OauthManagerRow, { serviceid, config, auth:oauth[serviceid], doForget, doAuth }) )
 		);
 	}
 }));
 
-const OauthManagerRow = ({serviceid, config, auth, onClick}) =>
+const OauthManagerRow = ({serviceid, config, auth, doForget, doAuth}) => {
 	// auth - authorization details for serviceid, user may not have authorized so it will be missing
-	React.createElement('div', { className:'oauth-manager-row' },
+
+	let onClick = e => {
+		if (!stopClickAndCheck0(e)) return;
+
+		if (auth) doForget(serviceid);
+		else doAuth(serviceid);
+
+		e.target.blur();
+	};
+
+	return React.createElement('div', { className:'oauth-manager-row' },
 		React.createElement('img', { src:`../images/${serviceid}.png` }),
 		React.createElement('span', { style:{margin:'0 5px', fontStyle:(auth || 'italic')} },
 			(!auth ? '(no account)' : deepAccessUsingString(auth, config.dotname))
@@ -649,19 +651,161 @@ const OauthManagerRow = ({serviceid, config, auth, onClick}) =>
 			' ' + browser.i18n.getMessage(auth ? 'forget_account' : 'authorize_account')
 		)
 	);
+}
 // end - PageMyHotkeys
 // start - PageCommandForm
-let PageCommandForm = React.createClass({
+const PageCommandForm = ReactRedux.connect(
+	function(state, ownProps) {
+		return {
+			...(ownProps.location.pathname == '/edit' ? {hotkey:state.hotkeys.find(({filename})=>ownProps.params.filename)} : {}) // hotkey
+		}
+	}
+	// function(dispatch, ownProps) {
+	// 	return {
+	// 		// back: e => stopClickAndCheck0(e) ? dispatch(prevPage()) : undefined,
+	// 		// savehtk: e => stopClickAndCheck0(e) ? dispatch(prevPage()) : undefined
+	// 	}
+	// }
+)(React.createClass({
 	displayName: 'PageCommandForm',
+	getInitialState() {
+		return {
+			locale: gLocale,
+			isvalid: false
+		}
+	},
+	goBack(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { location:{pathname} } = this.props;
+
+		let backpath = '/';
+		if (pathname == '/add/create') backpath = '/add';
+		// else backpath = '/'; // pathname == '/edit'
+
+		ReactRouter.browserHistory.push(backpath);
+	},
+	validateForm() {
+		let { isvalid } = this.state; // component state
+		let { hotkey } = this.props; // mapped state
+		// hotkey is undefined, unless `iseditpage` is true
+		let { location:{pathname} } = this.props; // router
+
+		let iseditpage = !!hotkey;
+
+		let newisvalid;
+
+		// make sure none of the values are blank
+
+		// if edit, make sure at least one value is changed
+
+		if (isvalid !== newisvalid)
+			this.setState({ isvalid:newisvalid });
+	},
+	beautifyCode(e) {
+		if (!stopClickAndCheck0(e)) return;
+		let domel = document.getElementById('code');
+		let js = domel.value;
+		callInBootstrap('beautifyText', { js }, beautified => domel.value = beautified);
+	},
+	revertCode(e) {
+		let { hotkey } = this.props; // mapped state
+		let iseditpage = !!hotkey;
+		if (!stopClickAndCheck0(e) || !iseditpage) return;
+
+		document.getElementById('code').value = hotkey.command.content.code.exec;
+	},
 	render() {
-		return React.createElement('div', undefined,
-			'PageCommandForm'
+		let { locale, isvalid } = this.state; // component state
+		let { hotkey } = this.props; // mapped state
+		// hotkey is undefined, unless `iseditpage` is true
+		let iseditpage = !!hotkey;
+
+		// default values
+		let name, description, code, group=0; // default group "Uncategorized"
+		if (iseditpage) // take from `hotkey`
+			({ group, locale:{[locale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
+
+		return React.createElement('span', undefined,
+			// controls
+			React.createElement('div', { className:'row text-center' },
+				React.createElement('div', { className:'col-lg-12' },
+					React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
+						React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
+						' ' + browser.i18n.getMessage('back')
+					)
+				)
+			),
+			React.createElement('hr'),
+			// content
+			React.createElement('div', { className:'row text-center' },
+				React.createElement('form', undefined,
+					React.createElement('div', { className:'input-group' },
+						React.createElement('span', { className:'input-group-addon' },
+							browser.i18n.getMessage('group')
+						),
+						React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
+						React.createElement('select', { className:'form-control', id:'group', onChange:this.validateForm, defaultValue:group },
+							GROUPS.map( ({id:value, text}) => React.createElement('option', { value }, text) )
+						)
+					),
+
+					React.createElement('br'),
+					React.createElement('div', { className:'input-group' },
+						React.createElement('span', { className:'input-group-addon' },
+							browser.i18n.getMessage('name')
+						),
+						React.createElement('input', { className:'form-control', type:'text', id:'name', onChange:this.validateForm, defaultValue:name }),
+						React.createElement(LocalePicker)
+					),
+
+					React.createElement('br'),
+					React.createElement('div', { className:'input-group' },
+						React.createElement('span', { className:'input-group-addon' },
+							browser.i18n.getMessage('description')
+						),
+						React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description }),
+						React.createElement(LocalePicker)
+					),
+
+					React.createElement('br'),
+					React.createElement('div', { className:'input-group' },
+						React.createElement('span', { className:'input-group-addon', style:{verticalAlign:'top', paddingTop:'9px'} },
+							browser.i18n.getMessage('code'),
+							React.createElement('br'),
+							React.createElement('br'),
+							React.createElement('div', { className:'btn-group' },
+								React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':browser.i18n.getMessage('beautify'), onClick:this.beautifyCode, tabIndex:'-1' },
+									React.createElement('span', { className:'glyphicon glyphicon-console' })
+								),
+								iseditpage && React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':browser.i18n.getMessage('revert'), onClick:this.revertCode, tabIndex:'-1' },
+									React.createElement('span', { className:'glyphicon glyphicon-repeat' })
+								)
+							)
+						),
+						React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
+						React.createElement('div', { className:'form-group' },
+							React.createElement('textarea', { className:'form-control', id:'code', onChange:this.validateForm, defaultValue:code, style:{resize:'vertical',minHeight:'100px'} })
+						)
+					)
+				)
+			),
+			React.createElement('hr')
 		);
 	}
-});
+}));
+
+const LocalePicker = ({ locale=gLocale }) =>
+	React.createElement('div', { className:'input-group-btn' },
+		React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1' },
+			React.createElement('option', { value:'en-US' },
+				'English'
+			)
+		)
+	);
 // end - PageCommandForm
 // start - PageVersions
-let PageVersions = React.createClass({
+const PageVersions = React.createClass({
 	displayName: 'PageVersions',
 	render() {
 		return React.createElement('div', undefined,
@@ -671,17 +815,52 @@ let PageVersions = React.createClass({
 });
 // end - PageVersions
 // start - PageAddCommand
-let PageAddCommand = React.createClass({
+const PageAddCommand = React.createClass({
 	displayName: 'PageAddCommand',
+	goBack(e) {
+		if (!stopClickAndCheck0(e)) return;
+		ReactRouter.browserHistory.push('/');
+	},
+	loadCreate(e) {
+		if (!stopClickAndCheck0(e)) return;
+		ReactRouter.browserHistory.push('/add/create');
+	},
+	loadBrowse(e) {
+		if (!stopClickAndCheck0(e)) return;
+		ReactRouter.browserHistory.push('/add/browse');
+	},
 	render() {
-		return React.createElement('div', undefined,
-			'PageAddCommand'
+
+		return React.createElement('span', undefined,
+			// controls
+			React.createElement('div', { className:'row text-center' },
+				React.createElement('div', { className:'col-lg-12' },
+					React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
+						React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
+						' ' + browser.i18n.getMessage('back')
+					)
+				)
+			),
+			React.createElement('hr'),
+			// content
+			React.createElement('div', { className:'row text-center' },
+				React.createElement('a', { href:'#', className:'btn btn-default btn-lg', onClick:this.loadBrowse },
+					React.createElement('span', { className:'glyphicon glyphicon-globe' }),
+					' ' + browser.i18n.getMessage('browse_community')
+				),
+				' ',
+				React.createElement('a', { href:'#', className:'btn btn-default btn-lg', onClick:this.loadCreate },
+					React.createElement('span', { className:'glyphicon glyphicon-console' }),
+					' ' + browser.i18n.getMessage('create_new_command')
+				)
+			),
+			React.createElement('hr')
 		);
 	}
 });
 // end - PageAddCommand
 // start - PageCommunity
-let PageCommunity = React.createClass({
+const PageCommunity = React.createClass({
 	displayName: 'PageCommunity',
 	render() {
 		return React.createElement('div', undefined,
@@ -690,7 +869,7 @@ let PageCommunity = React.createClass({
 	}
 });
 // end - PageCommunity
-let PageInvalid = React.createClass({
+const PageInvalid = React.createClass({
 	displayName: 'PageInvalid',
 	render() {
 		let { params } = this.props;
@@ -1200,47 +1379,6 @@ let Page = React.createClass({
 		);
 	}
 });
-
-let LocalePicker = React.createClass({
-	displayName: 'LocalePicker',
-	render() {
-		let { locale='en-US' } = this.props;
-
-		return React.createElement('div', { className:'input-group-btn' },
-			React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1' },
-				React.createElement('option', { value:'en-US' },
-					'English'
-				)
-			)
-		);
-
-		// return React.createElement('div', { className:'input-group-btn' }, // add `open` to class if you want it open
-		// 	React.createElement('button', { type:'button', className:'btn btn-default dropdown-toggle' },
-		// 		'English',
-		// 		' ',
-		// 		React.createElement('span', { className:'caret' })
-		// 	),
-		// 	React.createElement('ul', { className:'dropdown-menu dropdown-menu-right' },
-		// 		React.createElement('li', undefined,
-		// 			React.createElement('div', { className:'input-group input-group-sm', style:{margin:'0 auto'} },
-		// 				React.createElement('input', { className:'form-control', type:'text', disabled:'disabled', id:'locale' })
-		// 			)
-		// 		),
-		// 		React.createElement('li', { className:'divider' } ),
-		// 		React.createElement('li', undefined,
-		// 			React.createElement('a', { href:'#' },
-		// 				'French'
-		// 			)
-		// 		),
-		// 		React.createElement('li', undefined,
-		// 			React.createElement('a', { href:'#' },
-		// 				'Spanish'
-		// 			)
-		// 		)
-		// 	)
-		// );
-	}
-})
 
 let Controls = React.createClass({
 	displayName: 'Controls',
