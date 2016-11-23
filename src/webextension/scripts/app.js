@@ -247,7 +247,9 @@ const PageMyHotkeys = ReactRedux.connect(
 				// controls
 				React.createElement('div', { className:'row text-center' },
 					React.createElement('div', { className:'col-lg-12' },
-
+						browser.i18n.getMessage('myhotkeys_page_description'),
+						React.createElement('br'),
+						React.createElement('br'),
 						React.createElement(OauthManager)
 					)
 				),
@@ -288,7 +290,8 @@ const OauthManager = ReactRedux.connect(
 		// rels.push(React.createElement('br'));
 		// rels.push(React.createElement('br'));
 
-		return React.createElement('div', { },
+		return React.createElement('div', { className:'oauth-manager' },
+			browser.i18n.getMessage('oauth_manager_description'),
 			Object.entries(nub.oauth).map( ([serviceid, config]) => React.createElement(OauthManagerRow, { serviceid, config, auth:oauth[serviceid], onClick:this.onRowBtnClick.bind(null, serviceid) }) )
 		);
 	}

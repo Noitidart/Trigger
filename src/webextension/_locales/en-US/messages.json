@@ -69,6 +69,9 @@
 	"crumb_community": { "message": "Community" },
 
 	"forget_account": { "message": "Forget Account" },
-	"authorize_account": { "message": "Authorize Account" }
+	"authorize_account": { "message": "Authorize Account" },
+
+	"myhotkeys_page_description": { "message": "From here you can add commands. You can then assign hotkeys to the commands. Commands can be written or gotten from the shared community, click the \"+\" icon to get started." },
+	"oauth_manager_description": { "message": "Github powers the community due to it's excellent version control. You can *add* commands from the community without an acccount. However, if you want to *share* your newly created or edited commands, you must grant permission." }
 
 }

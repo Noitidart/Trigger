@@ -83,3 +83,13 @@ select.btn {
 	text-indent: -9px;
 	cursor: default;
 }
+
+.oauth-manager {
+	width: 75%;
+	margin: 0 auto;
+}
+
+.oauth-manager div { /* oauth-manager-row */
+	margin: 9px auto 0 auto;
+	width: 50%;
+}
