@@ -557,7 +557,25 @@ async function getExtLocales() {
 
 async function getSelectedLocale() {
 	// returns the locale in my extension, that is being used by the browser, to display my extension stuff
-	// TODO
+	let testkey = 'myhotkeys_page_description'; // will collect this message from each of the extlocales, then see what browser.i18n.getMessage(testkey) is equal to
+	// REQUIRED: pick a `testkey` that has a unique value in each message.json file
+
+	let extlocales = await getExtLocales();
+
+	let errors = [];
+	let msgs = {}; // localized_messages `[messages.json[testkey]]: extlocale`
+	for (let extlocale of extlocales) {
+		let msg = (await xhrPromise(nub.path.locales + extlocale + '/messages.json', { restype:'json' })).xhr.response[testkey];
+
+		if (msg in msgs)
+			errors.push(`* messages.json for locale "${extlocale}" has the same "message" as locale ${msgs[msg]} for \`testkey\`("${testkey}")`);
+		else
+			msgs[msg] = extlocale;
+	}
+
+	if (errors.length) throw 'ERROR(getSelectedLocale):\n' + errors.join('\n');
+
+	return msgs[browser.i18n.getMessage(testkey)];
 }
 async function getClosestAvailableLocale() {
 	// gets the locale available in my extension, that is closest to the users locale

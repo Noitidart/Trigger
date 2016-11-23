@@ -12,8 +12,9 @@ let gSupressUpdateHydrantOnce;
 async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
 
-	// gLocale defaults to en-US if no close locale found
-	gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
+	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
+	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', undefined, val=>resolve(val))) || 'en-US';
+
 	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant, nub:1 }, val => resolve(val)) );
 
 	nub = data.nub;
