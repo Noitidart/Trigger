@@ -436,15 +436,44 @@ function setXPrefs(aArgs) {
 }
 
 function beautifyText({ js }) {
-	// comm func
-	var gBeautify = {};
-
-	let { require } = Cu.import('resource://devtools/shared/Loader.jsm', {});
-	var { jsBeautify } = require('devtools/shared/jsbeautify/src/beautify-js');
-
-	return jsBeautify(js);
+	if (js) {
+		let beautifyJs = lazyRequire('dev', 'devtools/shared/jsbeautify/src/beautify-js', 'jsBeautify');
+		return beautifyJs(js);
+	}
 }
 
+let gRequirers = {};
+let gRequireds = {};
+function lazyRequire(type, path, exportedas) {
+	// exportedas - string - what it is exported as
+	// type - string;enum[sdk,dev]
+	// path - string - path to require
+	// examples:
+		// lazyRequire('sdk/l10n/locale').getPreferedLocales();
+		// lazyRequire('dev', 'devtools/shared/jsbeautify/src/beautify-js', 'jsBeautify')(javascript_text)
+	let required = gRequireds[path];
+	if (!required) {
+		let requirer = gRequirers[type];
+		if (!requirer) {
+			if (type == 'dev')
+				({ require:requirer } = Cu.import('resource://devtools/shared/Loader.jsm', {}));
+			else if (type == 'sdk')
+				({ require:requirer } = Cu.import('resource://gre/modules/commonjs/toolkit/require.js', {}));
+
+			gRequirers[type] = requirer;
+		}
+
+		if (exportedas)
+			({ [exportedas]:required } = requirer(path));
+		else
+			required = requirer(path);
+
+
+		gRequireds[path] = required;
+	}
+
+	return required;
+}
 // start - common helper functions
 function getNativeHandlePtrStr(aDOMWindow) {
 	var aDOMBaseWindow = aDOMWindow.QueryInterface(Ci.nsIInterfaceRequestor)

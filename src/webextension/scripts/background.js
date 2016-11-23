@@ -15,6 +15,7 @@ var nub = {
 		webext: '/',
 		images: 'images/',
 		fonts: 'styles/fonts/',
+		locales: '_locales/',
 		pages: 'pages/',
 		scripts: 'scripts/',
 		styles: 'styles/',
@@ -543,6 +544,38 @@ function getNamsgExepkgPath() {
 	return exe_pkgpath;
 }
 
+async function getExtLocales() {
+	let { xhr:{response} } = await xhrPromise(nub.path.locales);
+
+	let locales = [];
+	let match, patt = /^.*? ([a-z\-]+)\//img;
+	while (match = patt.exec(response))
+		locales.push(match[1]);
+
+	return locales;
+}
+
+async function getClosestAvailableLocale() {
+	// gets the locale available in my extension, that is closest to the users locale
+	// returns null if nothing close
+
+	// lower case things because thats what findClosestLocale needs
+	let extlocales = await getExtLocales(); // these are the available locales
+
+	let userlocale_preferred = browser.i18n.getUILanguage(); // same as `browser.i18n.getMessage('@@ui_locale')`
+	let userlocale_lesspreferred = await browser.i18n.getAcceptLanguages();
+
+	let available = extlocales.map(el => el.toLowerCase()); // findClosestLocale needs it lower case
+	let wanted = [userlocale_preferred, ...userlocale_lesspreferred]; // in order of priority
+	wanted = [...new Set(wanted)]; // filter duplicates from wanted
+	wanted = wanted.map(el => el.toLowerCase()); // findClosestLocale needs it lower case
+
+	let closest = findClosestLocale(available, wanted);
+	if (closest)
+		return extlocales.find(el => el.toLowerCase() == closest); // return proper casing
+	else
+		return null;
+}
 // end - addon specific helpers
 
 // start - cmn
@@ -933,6 +966,66 @@ function queryStringDom(objstr, opts={}) {
 			return x.length > 0;
 		}).join('&') : '';
 	}
+}
+
+// rev3 - https://gist.github.com/Noitidart/110c2f859db62398ae76069f4a6c5642
+/**
+ * Selects the closest matching locale from a list of locales.
+ *
+ * @param  aLocales
+ *         An array of available locales
+ * @param  aMatchLocales
+ *         An array of prefered locales, ordered by priority. Most wanted first.
+ *         Locales have to be in lowercase.
+ * @return the best match for the currently selected locale
+ *
+ * Stolen from http://mxr.mozilla.org/mozilla-central/source/toolkit/mozapps/extensions/internal/XPIProvider.jsm
+ */
+function findClosestLocale(aLocales, aMatchLocales) {
+  aMatchLocales = aMatchLocales;
+
+  // Holds the best matching localized resource
+  let bestmatch = null;
+  // The number of locale parts it matched with
+  let bestmatchcount = 0;
+  // The number of locale parts in the match
+  let bestpartcount = 0;
+
+  for (let locale of aMatchLocales) {
+    let lparts = locale.split("-");
+    for (let localized of aLocales) {
+      let found = localized.toLowerCase();
+      // Exact match is returned immediately
+      if (locale == found)
+        return localized;
+
+      let fparts = found.split("-");
+      /* If we have found a possible match and this one isn't any longer
+         then we dont need to check further. */
+      if (bestmatch && fparts.length < bestmatchcount)
+        continue;
+
+      // Count the number of parts that match
+      let maxmatchcount = Math.min(fparts.length, lparts.length);
+      let matchcount = 0;
+      while (matchcount < maxmatchcount &&
+             fparts[matchcount] == lparts[matchcount])
+        matchcount++;
+
+      /* If we matched more than the last best match or matched the same and
+         this locale is less specific than the last best match. */
+      if (matchcount > bestmatchcount ||
+         (matchcount == bestmatchcount && fparts.length < bestpartcount)) {
+        bestmatch = localized;
+        bestmatchcount = matchcount;
+        bestpartcount = fparts.length;
+      }
+    }
+    // If we found a valid match for this locale return it
+    if (bestmatch)
+      return bestmatch;
+  }
+  return null;
 }
 // end - cmn
 
