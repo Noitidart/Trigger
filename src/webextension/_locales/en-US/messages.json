@@ -79,14 +79,23 @@
 	"create_new_command": { "message": "Create New Command" },
 	"browse_community": { "message": "Community Shared Commands" },
 
+	"tooltip_sharecommand": { "message": "Share Command" },
+	"tooltip_removehotkeycommand": { "message": "Remove Hotkey & Command" },
+	"tooltip_disablehotkey": { "message": "Disable Hotkey" },
+	"tooltip_enablehotkey": { "message": "Enable Hotkey" },
+	"tooltip_updatecommand": { "message": "Command Update Available" },
+	"tooltip_editcommand": { "message": "Edit Command" },
+	"tooltip_changehotkey": { "message": "Change Hotkey" },
+	"tooltip_sethotkey": { "message": "Set Hotkey" },
+	"NO_HOTKEY": { "message": "NO HOTKEY SET" },
 
 	"btn_addcommand": { "message": "Add Command" },
 	"btn_savecommand": { "message": "Update Command" },
 	"name": { "message": "Name" },
 	"description": { "message": "Description" },
 	"code": { "message": "Code" },
-	"beautify": { "message": "Beautify" },
-	"revert": { "message": "Revert" },
+	"tooltip_beautify": { "message": "Beautify" },
+	"tooltip_revert": { "message": "Revert" },
 
 	"back": { "message": "Back" }
 

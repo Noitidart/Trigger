@@ -14,6 +14,7 @@ async function init() {
 
 	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
 	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', undefined, val=>resolve(val))) || 'en-US';
+	gLocale = 'en-US'; // for now, as i havent wrote up locales support
 
 	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant, nub:1 }, val => resolve(val)) );
 
@@ -80,22 +81,24 @@ function setMainKeys(obj_of_mainkeys) {
 // PAGES_STATE ACTIONS AND CREATORS AND REDUCER
 // clearPageStates
 const CLEAR_PAGE_STATES_IF_CHANGED = 'CLEAR_PAGE_STATES_IF_CHANGED';
-function clearPageStates(pathnames) {
+function clearPageStates(pathnames, namevalues) {
 	// pathnames can be a single pathname, so a string, else an array of strings
+	// namevalues is a new object to replace the state with
 	if (typeof(pathnames) == 'string')
 		pathnames = [pathnames];
 
 	return {
 		type: CLEAR_PAGE_STATES_IF_CHANGED,
-		pathnames
+		pathnames,
+		namevalues
 	};
 }
 
 // loadPage - clears any saved state for the new path to load
-function loadPage(pathname) {
+function loadPage(pathname, namevalues) {
 	// TODO: MAYBE: namevalues - what to set the pagestate to before loading, it replaces the old state with this one
 
-	store.dispatch(clearPageStates(pathname));
+	store.dispatch(clearPageStates(pathname, namevalues));
 
 	// i dont think i need async, as the store.dispatch should complete everything synchronously
 	// setTimeout(()=>ReactRouter.browserHistory.push(pathname), 0); // setTimeout so that it happens after the redux state is update is comitted, as that should happen synchronously from here // link393485
@@ -132,6 +135,7 @@ function modPageState(pathname, namevalues, value) {
 
 // reducer
 function pages_state(state={}, action) {
+	// NOTE: KEEP each pages object shallow
 	switch (action.type) {
 		case SET_MAIN_KEYS: {
 			const reducer = 'pages_state';
@@ -139,14 +143,17 @@ function pages_state(state={}, action) {
 			return reduced || state;
 		}
 		case CLEAR_PAGE_STATES_IF_CHANGED: {
-			let { pathnames } = action;
+			let { pathnames, namevalues } = action;
 
 			let newstate_isnew = false;
 			let newstate = {...state};
 			for (let pathname of pathnames) {
-				if (pathname in newstate) {
+				let pagestate = state[pathname];
+				let newpagestate = namevalues;
+				if (React.addons.shallowCompare({props:pagestate}, newpagestate)) {
 					newstate_isnew = true;
-					delete newstate[pathname];
+					if (newpagestate) newstate[pathname] = newpagestate;
+					else delete newstate[pathname];
 				}
 				// else - this pathname never had any pagestate saved, so no change, meaning newstate_isNOTnew because of this
 			}
@@ -169,7 +176,7 @@ function pages_state(state={}, action) {
 						delete namevalues[name];
 
 				if (Object.keys(namevalues).length)
-					newstate = { ...state, [pathname]:{pagestate, ...namevalues} }; // and also this why link383991
+					newstate = { ...state, [pathname]:{...pagestate, ...namevalues} }; // and also this why link383991
 			}
 
 			if (!newstate) console.warn('WARN modPageState: Nothing changed in page state of ' + pathname + '. Passed namevalues:', orignamevalues);
@@ -183,15 +190,72 @@ function pages_state(state={}, action) {
 }
 
 // HOTKEYS ACTIONS AND CREATORS AND REDUCER
+const ADD_HOTKEY = 'ADD_HOTKEY';
+function addHotkey(hotkey) {
+	return {
+		type: ADD_HOTKEY,
+		hotkey
+	}
+}
+
+const REMOVE_HOTKEY = 'REMOVE_HOTKEY';
+function removeHotkey(filename) {
+	return {
+		type: REMOVE_HOTKEY,
+		filename
+	}
+}
+
+const EDIT_REPLACE_HOTKEY = 'EDIT_REPLACE_HOTKEY';
+function editHotkey(hotkey) {
+	// this really is a fully replacement of the hotkey
+	return {
+		type: EDIT_REPLACE_HOTKEY,
+		hotkey
+	}
+}
+
 function hotkeys(state=hydrant.stg.pref_hotkeys, action) {
 	switch (action.type) {
-		case SET_MAIN_KEYS:
+		case SET_MAIN_KEYS: {
 			const reducer = 'hotkeys';
 			let { [reducer]:reduced } = action.obj_of_mainkeys;
 			return reduced || state;
-			// let mainkey = 'hotkeys';
-			// let { obj_of_mainkeys } = action;
-			// return (mainkey in obj_of_mainkeys ? obj_of_mainkeys[mainkey] : state);
+		}
+		case ADD_HOTKEY: {
+			let { hotkey } = action;
+
+			let newstate = [...state, hotkey];
+
+			callInBackground('storageCall', {aArea:'local',aAction:'set',aKeys:{
+				pref_hotkeys: newstate
+			}});
+
+			return newstate;
+		}
+		case REMOVE_HOTKEY: {
+			let { filename } = action;
+
+			let newstate = state.filter(a_hotkey => a_hotkey.command.filename != filename);
+
+			callInBackground('storageCall', {aArea:'local',aAction:'set',aKeys:{
+				pref_hotkeys: newstate
+			}});
+
+			return newstate;
+		}
+		case EDIT_REPLACE_HOTKEY: {
+			let { hotkey } = action;
+			let { filename } = hotkey.command;
+
+			let newstate = state.map(a_hotkey => a_hotkey.command.filename != filename ? a_hotkey : hotkey);
+
+			callInBackground('storageCall', {aArea:'local',aAction:'set',aKeys:{
+				pref_hotkeys: newstate
+			}});
+
+			return newstate;
+		}
 		default:
 			return state;
 	}
@@ -237,19 +301,19 @@ let app = Redux.combineReducers({
 {
 	enabled: false,
 	combo: [], // remote_htk does not have
-	filename: '', // generated based on filename's available on server // just a random hash // if not yet verified with server (meaning not yet shared) this is prefexed with `_`
 	// code is in filename_code.js
 	command: CommandStruct
 }
 */
 /* CommandStruct
 {
+	filename: '', // generated based on filename's available on server // just a random hash // if not yet verified with server (meaning not yet shared) this is prefexed with `_`
 	file_sha, // not there if edited & unshared edits
 	base_file_sha, // only there if edited & unshared edits
 	changes_since_base: {'group':1, 'locale':{a:[],r:[],u:[]}, 'code':1} // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
 	content: {
 		group:
-		locale: {
+		locales: {
 			'en-US': {
 				name, description
 			}
@@ -303,14 +367,23 @@ const Header = React.createClass({
 			'/add': ['myhotkeys', 'addcommand'],
 			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
 			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
-			'/edit': ['myhotkeys', 'editcommand'],
-			'/versions': ['myhotkeys', 'versionscommand']
+			// '/edit': ['myhotkeys', 'editcommand'],
+			// '/versions': ['myhotkeys', 'versionscommand']
 		};
+		// special cases
+		let special = /(edit|versions)\/(_?[a-z0-9]{8})/.exec(pathname)
+		if (special) {
+			let [, subcrumb, filename] = special;
+			let hotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+			let { name } = hotkey.command.content.locales[gLocale]; // TODO: multilocale
+			pathcrumbs[pathname] = ['myhotkeys', browser.i18n.getMessage(`crumb_${subcrumb}command`, name)]
+		}
+
 		let crumbs = pathcrumbs[pathname] || ['invalid'];
 
 		// localize it and wrap it <small>
 		crumbs.forEach( (crumb, i, arr) =>
-			arr[i] = React.createElement('small', { style:{whiteSpace:'no-wrap'} }, browser.i18n.getMessage('crumb_' + crumb))
+			arr[i] = React.createElement( 'small', { style:{whiteSpace:'no-wrap'} }, (browser.i18n.getMessage('crumb_' + crumb) || crumb) )
 		);
 
 		if (crumbs.length > 1)
@@ -353,7 +426,7 @@ const PageMyHotkeys = ReactRedux.connect(
 			React.createElement('hr'),
 			// content
 			React.createElement('div', { className:'row text-center' },
-				...hotkeys.map(hotkey => React.createElement(Hotkey, { hotkey, key:hotkey.filename })),
+				...hotkeys.map(hotkey => React.createElement(Hotkey, { hotkey, key:hotkey.command.filename })),
 				React.createElement(HotkeyAdd)
 			),
 			React.createElement('hr')
@@ -362,46 +435,28 @@ const PageMyHotkeys = ReactRedux.connect(
 }));
 
 // hotkey elements
-let Hotkey = React.createClass({
+const Hotkey = React.createClass({
 	displayName: 'Hotkey',
 	trash(e) {
+		// trash hotkey and command
 		if (!stopClickAndCheck0(e)) return;
-
-		let { pref_hotkey:{filename} } = this.props;
-
-		let state = store.getState();
-		let newstg = {
-			...state.stg,
-			pref_hotkeys: state.stg.pref_hotkeys.filter(a_pref_hotkey => a_pref_hotkey.filename != filename)
-		};
-
-		store.dispatch(setMainKeys({
-			stg: newstg
-		}));
-
-		let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
-		callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
+		let { hotkey:{command:{filename}} } = this.props;
+		store.dispatch(removeHotkey(filename));
 	},
 	edit(e) {
+		// edit command
 		if (!stopClickAndCheck0(e)) return;
-
-		let { pref_hotkey:{filename} } = this.props;
-
-		store.dispatch(setMainKeys(
-			{
-				page_history: [...store.getState().page_history, 'edit_command'],
-				editing: {
-					filename,
-					isvalid: false
-				}
-			}
-		));
+		let { hotkey } = this.props;
+		let { hotkey:{command:{filename}} } = this.props;
+		// loadPage('/edit/' + filename, { testing:genFilename() });
+		loadPage('/edit/' + filename, { testing:genFilename() });
 	},
 	share: async function(e) {
+		// share command
 		if (!stopClickAndCheck0(e)) return;
 
-		let { pref_hotkey } = this.props;
-		let { filename, command:{group, locale, code} } = pref_hotkey;
+		let { hotkey } = this.props;
+		let { command:{filename, group, locales, code} } = pref_hotkey;
 
 		let state = store.getState();
 
@@ -608,15 +663,14 @@ let Hotkey = React.createClass({
 	render() {
 		let { hotkey } = this.props;
 
-		let { enabled, filename, combo, command } = hotkey;
-
-		let { file_sha, content:{group, locale:{'en-US':{name, description}}, code:{exec:code}} } = command;
-		// file_sha, group, name, description, code
+		let { enabled, combo, command } = hotkey;
+		let { file_sha, filename, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
+		// file_sha, filename, group, name, description, code
 
 		let combotxt;
 		let hashotkey = true;
 		if (!combo || !combo.length) {
-			combotxt = 'NO HOTKEY SET';
+			combotxt = browser.i18n.getMessage('NO_HOTKEY');
 			hashotkey = false;
 		}
 
@@ -640,27 +694,27 @@ let Hotkey = React.createClass({
 						name
 					),
 					React.createElement('p', undefined,
-						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'warning' : 'default'), 'data-tooltip':(hashotkey ? 'Change Hotkey' : 'Set Hotkey') },
+						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'warning' : 'default'), 'data-tooltip':browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey') },
 							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
 						),
 						' ',
-						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Edit', onClick:this.edit },
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_editcommand'), onClick:this.edit },
 							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
 						),
 						hashotkey && ' ',
-						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + (isenabled ? 'default' : 'danger'), 'data-tooltip':isenabled ? 'Disable' : 'Enable' },
+						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + (isenabled ? 'default' : 'danger'), 'data-tooltip':browser.i18n.getMessage(isenabled ? 'tooltip_disablehotkey' : 'tooltip_enablehotkey') },
 							React.createElement('span', { className:'glyphicon glyphicon-off' })
 						),
 						' ',
-						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Remove', onClick:this.trash },
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_removehotkeycommand'), onClick:this.trash },
 							React.createElement('span', { className:'glyphicon glyphicon-trash' })
 						),
 						!isshared && ' ',
-						!isshared && React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':'Share', onClick:this.share },
+						!isshared && React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_sharecommand'), onClick:this.share },
 							React.createElement('span', { className:'glyphicon glyphicon-globe' })
 						),
 						!isupdated && ' ',
-						!isupdated && React.createElement('a', { href:'#', className:'btn btn-info', 'data-tooltip':'Update Available'},
+						!isupdated && React.createElement('a', { href:'#', className:'btn btn-info', 'data-tooltip':browser.i18n.getMessage('tooltip_updatecommand')},
 							React.createElement('span', { className:'glyphicon glyphicon-download' })
 						)
 					)
@@ -672,10 +726,7 @@ let Hotkey = React.createClass({
 
 let HotkeyAdd = React.createClass({
 	displayName: 'HotkeyAdd',
-	loadAdd(e) {
-		if (!stopClickAndCheck0(e)) return;
-		loadPage('/add');
-	},
+	loadAdd: e => stopClickAndCheck0(e) ? loadPage('/add') : null,
 	render() {
 		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature hotkey-add' },
 			React.createElement('div', { className:'thumbnail' },
@@ -753,7 +804,7 @@ const PageCommandForm = ReactRedux.connect(
 		return {
 			// NOTE: never feed in fully pagestate, like line below, just select the stuff from pagestate that this component needs
 			// pagestate: state.pages_state[ownProps.location.pathname],
-			...(ownProps.location.pathname == '/edit' ? {hotkey:state.hotkeys.find(({filename})=>ownProps.params.filename)} : {}) // hotkey
+			...(ownProps.location.pathname.startsWith('/edit/') ? {hotkey:state.hotkeys.find(({filename})=>ownProps.params.filename)} : {}) // hotkey
 		}
 	}
 	// function(dispatch, ownProps) {
@@ -803,7 +854,7 @@ const PageCommandForm = ReactRedux.connect(
 			// if edit, make sure at least one value is changed
 			Object.assign(domvalues, getFormValues(['group']));
 
-			let { group, locale:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content;
+			let { group, locales:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content; // TODO: multilocale point
 			let hotkeyvalues = { group, name, description, code };
 
 			if(!React.addons.shallowCompare({props:hotkeyvalues}, domvalues))
@@ -835,10 +886,10 @@ const PageCommandForm = ReactRedux.connect(
 		// pathname - needed for SaveCommandBtn so it can get `isvalid` from right `pages_state`
 		let iseditpage = !!hotkey;
 
-		// default values
+		// default values for form fields
 		let name, description, code, group=0; // default group "Uncategorized"
 		if (iseditpage) // take from `hotkey`
-			({ group, locale:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
+			({ group, locales:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
 
 		return React.createElement('span', undefined,
 			// controls
@@ -848,7 +899,7 @@ const PageCommandForm = ReactRedux.connect(
 						React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
 						' ' + browser.i18n.getMessage('back')
 					),
-					React.createElement(SaveCommandBtn, { pathname, iseditpage })
+					React.createElement(SaveCommandBtn, { pathname, iseditpage, hotkey })
 				)
 			),
 			React.createElement('hr'),
@@ -890,10 +941,10 @@ const PageCommandForm = ReactRedux.connect(
 							React.createElement('br'),
 							React.createElement('br'),
 							React.createElement('div', { className:'btn-group' },
-								React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':browser.i18n.getMessage('beautify'), onClick:this.beautifyCode, tabIndex:'-1' },
+								React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':browser.i18n.getMessage('tooltip_beautify'), onClick:this.beautifyCode, tabIndex:'-1' },
 									React.createElement('span', { className:'glyphicon glyphicon-console' })
 								),
-								iseditpage && React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':browser.i18n.getMessage('revert'), onClick:this.revertCode, tabIndex:'-1' },
+								iseditpage && React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':browser.i18n.getMessage('tooltip_revert'), onClick:this.revertCode, tabIndex:'-1' },
 									React.createElement('span', { className:'glyphicon glyphicon-repeat' })
 								)
 							)
@@ -911,6 +962,10 @@ const PageCommandForm = ReactRedux.connect(
 }));
 
 const SaveCommandBtn = ReactRedux.connect(
+	// ownProps
+		// hotkey - used to get command, combo, and enabled values when doing editHotkey. will obviously be undefined if is not `iseditpage`
+		// pathname - used to get `pagestate` for `isvalid`
+		// iseditpage - even though `pathname` is provided, i already calc this value in parent component so just send it
 	function(state, ownProps) {
 		let { pathname } = ownProps;
 		let pagestate = state.pages_state[pathname] || {};
@@ -918,29 +973,135 @@ const SaveCommandBtn = ReactRedux.connect(
 		return {
 			isvalid: pagestate.isvalid
 		}
-	},
-	function(dispatch, ownProps) {
-		return {
-			onClick: e => {
-				if (!stopClickAndCheck0(e)) return;
-
-				let { isvalid } = this.props; // mapped state
-				if (!isvalid) return;
-
-				let { iseditpage } = this.props;
-
-				alert('clicked');
-			}
-		}
 	}
 )(React.createClass({
 	displayName: 'SaveCommandBtn',
+	onClick: async function(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { isvalid } = this.props; // mapped state
+		if (!isvalid) return;
+
+		let { iseditpage, hotkey } = this.props;
+
+		let { command } = hotkey || {};
+		let filename = iseditpage ? command.filename : '_' + genFilename(); // TODO: ideally i should make sure no other local hotkey shares this filename
+
+		let newcommand = {
+			// changes_since_base // added below if it is edit of isgitfile (!islocal)
+			// base_file_sha // added below if it is edit of isgitfile (!islocal)
+			// file_sha
+			filename,
+			content: {
+				group: document.getElementById('group').value,
+				locales: {
+					'en-US': {
+						name: document.getElementById('name').value.trim(),
+						description: document.getElementById('description').value.trim()
+					}
+				},
+				code: {
+					exec: await new Promise(resolve => callInBootstrap('beautifyText', { js:document.getElementById('code').value.trim() }, val=>resolve(val)))
+				}
+			}
+		};
+
+		let isreallyedited = false;
+		if (iseditpage) {
+			// lets make sure something really changed
+			// and collect that into changes_since_base if necessary
+			if (JSON.stringify(newcommand.content) != JSON.stringify(command.content)) {
+				isreallyedited = true;
+
+				// is there a gitfile? if so then set the git properies of `base_file_sha` and `changes_since_base`
+				let islocal = filename.startsWith('_'); // newhotkey.name is same as filename as this is not something copied even if isreallyedited
+				if (!islocal) {
+					// ok isgitfile
+					let { content:newcontent } = newcommand;
+					let { content } = command;
+
+					// set `base_file_sha`
+					let { file_sha, base_file_sha } = command;
+					if (!file_sha && !base_file_sha) throw 'how is this isgitfile (not islocal) and doesnt have a file_sha??';
+					newcommand.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
+					// delete newcommand.file_sha; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
+
+					// set `changes_since_base` on `newhotkey`
+					// what more changed since last (FIRST or SECOND+)?
+					let { changes_since_base={} } = command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
+					for (let change_type of ['group', 'locales', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes_since_base` and `field` is the keys in `content` of gitfile
+						if (JSON.stringify(newcontent[change_type]) != JSON.stringify(content[change_type])) {
+							changes_since_base[change_type] = 1;
+
+							if (change_type == 'locales') {
+								// figure out which locales changed
+								let newlocales = newcontent.locales;
+								let oldlocales = content.locales;
+
+								// which locales added
+								let a = [];
+								for (let nl in newlocales) {
+									// nl - newlocale
+									if (!(nl in oldlocales))
+									 	if (newlocales[nl].name || newlocales[nl].description) // make sure at least one is provided
+											a.push(nl);
+								}
+
+								// which locales removed
+								let r = [];
+								for (let ol in oldlocales) {
+									if (!(ol in newlocales))
+										r.push(ol);
+								}
+
+								// which locales updated
+								let u = [];
+								for (let ol in oldlocales) {
+									if (ol in newlocales) // make sure it is in newlocales (so not removed)
+										if (newlocales[ol].name != oldlocales[ol].name || newlocales[ol].description != oldlocales[ol].description) // NOTE: if one is updated to blank, then it is counted as update // TODO: ensure that form NEVER accepts if one or the other is blank this will resolve this issue
+											u.push(ol);
+								}
+
+								changes_since_base.locale = {
+									...(a.length ? {a} : {}),
+									...(r.length ? {r} : {}),
+									...(u.length ? {u} : {})
+								};
+							}
+						}
+					}
+					newcommand.changes_since_base = changes_since_base;
+
+				}
+			}
+		}
+
+		if (!iseditpage) {
+			// so iscreate
+			// add disabled and unset hotkey with this command
+			store.dispatch(addHotkey({
+				combo: null,
+				enabled: false,
+				command: newcommand
+			}));
+
+			loadPage('/'); // go back to my hotkeys page
+		} else if (isreallyedited) { // in this else it is obviously `iseditpage == true`
+			let { combo, enabled } = hotkey;
+			store.dispatch(editHotkey({
+				combo,
+				enabled,
+				command: newcommand
+			}));
+
+			loadPage('/'); // go back to my hotkeys page
+		}
+	},
 	render() {
 		let { iseditpage } = this.props;
 		let { isvalid } = this.props; // mapped state
-		let { onClick } = this.props; // dispatchers
 
-		return React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:!isvalid, onClick, tabIndex:(isvalid ? undefined : '-1') },
+		return React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:!isvalid, onClick:this.onClick, tabIndex:(isvalid ? undefined : '-1') },
 			React.createElement('span', { className:'glyphicon glyphicon-ok' }),
 			' ' + browser.i18n.getMessage(iseditpage ? 'btn_savecommand' : 'btn_addcommand')
 		);
@@ -968,18 +1129,9 @@ const PageVersions = React.createClass({
 // start - PageAddCommand
 const PageAddCommand = React.createClass({
 	displayName: 'PageAddCommand',
-	goBack(e) {
-		if (!stopClickAndCheck0(e)) return;
-		loadOldPage.push('/');
-	},
-	loadCreate(e) {
-		if (!stopClickAndCheck0(e)) return;
-		loadPage('/add/create');
-	},
-	loadBrowse(e) {
-		if (!stopClickAndCheck0(e)) return;
-		loadPage('/add/browse');
-	},
+	goBack: e => stopClickAndCheck0(e) ? loadOldPage('/') : null,
+	loadCreate: e => stopClickAndCheck0(e) ? loadPage('/add/create') : null,
+	loadBrowse: e => stopClickAndCheck0(e) ? loadPage('/add/browse') : null,
 	render() {
 
 		return React.createElement('span', undefined,
@@ -1585,69 +1737,7 @@ let Controls = React.createClass({
 						newhotkey[p] = pref_hotkey[p];
 					}
 
-					// is there a gitfile? if so then set the git properies
-					let islocal = filename.startsWith('_'); // newhotkey.name is same as filename as this is not something copied even if isreallyedited
-					if (!islocal) {
-						// ok is gitfile
 
-						let { command:newcommand } = newhotkey
-						let { content:newcontent } = newcommand;
-
-						let { command } = pref_hotkey;
-						let { content } = command;
-
-						// set `base_file_sha` on `newhotkey`
-						let { file_sha, base_file_sha } = command;
-						if (!file_sha && !base_file_sha) throw 'how is this isgitfile (not islocal) and doesnt have a file_sha??';
-						newcommand.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
-						// delete newcommand.file_sha; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
-
-						// set `changes_since_base` on `newhotkey`
-						// what more changed since last (FIRST or SECOND+)?
-						let { changes_since_base={} } = command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
-						for (let change_type of ['group', 'locale', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes_since_base` and `field` is the keys in `content` of gitfile
-							if (JSON.stringify(newcontent[change_type]) != JSON.stringify(content[change_type])) {
-								changes_since_base[change_type] = 1;
-
-								if (change_type == 'locale') {
-									// figure out which locales changed
-									let newlocales = newcontent.locale;
-									let oldlocales = content.locale;
-									// which locales added
-									let a = []; // TODO: global note - rename to `locales` in `command.content` rather then `locale`
-									for (let nl in newlocales) {
-										// nl - newlocale
-										if (!(nl in oldlocales))
-										 	if (newlocales[nl].name || newlocales[nl].description) // make sure at least one is provided
-												a.push(nl);
-									}
-
-									// which locales removed
-									let r = [];
-									for (let ol in oldlocales) {
-										if (!(ol in newlocales))
-											r.push(ol);
-									}
-
-									// which locales updated
-									let u = [];
-									for (let ol in oldlocales) {
-										if (ol in newlocales) // make sure it is in newlocales (so not removed)
-											if (newlocales[ol].name != oldlocales[ol].name || newlocales[ol].description != oldlocales[ol].description) // NOTE: if one is updated to blank, then it is counted as update // TODO: ensure that form NEVER accepts if one or the other is blank this will resolve this issue
-												u.push(ol);
-									}
-
-									changes_since_base.locale = {
-										...(a.length ? {a} : {}),
-										...(r.length ? {r} : {}),
-										...(u.length ? {u} : {})
-									};
-								}
-							}
-						}
-						newcommand.changes_since_base = changes_since_base;
-
-					}
 				}
 			}
 
@@ -2203,6 +2293,18 @@ async function getUnixTime(opt) {
 	};
 
 	let servers = [
+		{
+			name: 'trigger-community',
+			xhropt: {
+				url: 'https://trigger-community.sundayschoolonline.org/unixtime.php',
+				restype: 'json'
+			},
+			xhrthen: ({response, status}) => {
+				if (status !== 200) throw `Unhandled Status (${status})`;
+				let unix_ms = response.unixtime * 1000;
+				return unix_ms;
+			}
+		},
 		{
 			name: 'CurrentTimestamp.com',
 			xhropt: {
