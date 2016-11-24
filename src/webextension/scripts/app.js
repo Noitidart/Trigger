@@ -11,6 +11,7 @@ let gSupressUpdateHydrantOnce;
 
 async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
+	document.title = browser.i18n.getMessage('addon_name');
 
 	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
 	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', undefined, val=>resolve(val))) || 'en-US';
@@ -168,7 +169,9 @@ function pages_state(state={}, action) {
 
 			let newstate;
 			if (!pagestate) {
-				newstate = { ...state, [pathname]:namevalues };
+				if (Object.entries(namevalues).find(([,value]) => value !== undefined))
+					newstate = { ...state, [pathname]:namevalues };
+				else console.warn('all values in namevalues are undefined and there is no pagestate so nothing changed really');
 			} else {
 				// this is why when you want to remove something from pagestate you must set to undefined link383991
 				for (let [name, newvalue] of Object.entries(namevalues))
@@ -179,7 +182,7 @@ function pages_state(state={}, action) {
 					newstate = { ...state, [pathname]:{...pagestate, ...namevalues} }; // and also this why link383991
 			}
 
-			if (!newstate) console.warn('WARN modPageState: Nothing changed in page state of ' + pathname + '. Passed namevalues:', orignamevalues);
+			if (!newstate) console.warn('WARN modPageState: Nothing changed in page state of ' + pathname + '. Passed namevalues:', orignamevalues, 'Current pagestate:', pagestate);
 			else console.log('OK modPageState: Something changed in page state of ' + pathname + '. new pagestate:', newstate[pathname], 'old pagestate:', pagestate);
 
 			return newstate || state;
@@ -308,7 +311,7 @@ let app = Redux.combineReducers({
 	command: CommandStruct
 }
 */
-/* CommandStruct
+/* CommandStruct - RemoteCommandStruct is same as this, except it has some '_' prefixed keys
 {
 	filename: '', // generated based on filename's available on server // just a random hash // if not yet verified with server (meaning not yet shared) this is prefexed with `_`
 	file_sha, // not there if edited & unshared edits
@@ -352,10 +355,6 @@ const App = React.createClass({
 		return React.createElement('div', { id:'app', className:'app container' },
 			React.createElement(Header, { pathname, params }),
 			children
-			// React.createElement(ControlsContainer),
-			// React.createElement('hr'),
-			// React.createElement(PageContainer),
-			// React.createElement('hr')
 		);
 	}
 });
@@ -989,21 +988,22 @@ const SaveCommandBtn = ReactRedux.connect(
 		let { command } = hotkey || {};
 		let filename = iseditpage ? command.filename : '_' + genFilename(); // TODO: ideally i should make sure no other local hotkey shares this filename
 
+		let domvalues = getFormValues(['name', 'description', 'code', 'group']);
 		let newcommand = {
 			// changes_since_base // added below if it is edit of isgitfile (!islocal)
 			// base_file_sha // added below if it is edit of isgitfile (!islocal)
 			// file_sha
 			filename,
 			content: {
-				group: document.getElementById('group').value,
+				group: domvalues.group,
 				locales: {
 					'en-US': {
-						name: document.getElementById('name').value.trim(),
-						description: document.getElementById('description').value.trim()
+						name: domvalues.name,
+						description: domvalues.description
 					}
 				},
 				code: {
-					exec: await new Promise(resolve => callInBootstrap('beautifyText', { js:document.getElementById('code').value.trim() }, val=>resolve(val)))
+					exec: await new Promise(resolve => callInBootstrap('beautifyText', { js:domvalues.code }, val=>resolve(val)))
 				}
 			}
 		};
@@ -1028,7 +1028,7 @@ const SaveCommandBtn = ReactRedux.connect(
 					newcommand.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
 					// delete newcommand.file_sha; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
 
-					newcommand.changes_since_base = calcCommandChanges(newcontent, content);
+					newcommand.changes_since_base = calcCommandChanges(newcontent, content); // i dont use this anymore, just leaving in case it affects something TODO: clean this up
 				}
 			}
 		}
@@ -1138,7 +1138,6 @@ const PageAddCommand = React.createClass({
 	loadCreate: e => stopClickAndCheck0(e) ? loadPage('/add/create') : null,
 	loadBrowse: e => stopClickAndCheck0(e) ? loadPage('/add/browse') : null,
 	render() {
-
 		return React.createElement('span', undefined,
 			// controls
 			React.createElement('div', { className:'row text-center' },
@@ -1168,14 +1167,309 @@ const PageAddCommand = React.createClass({
 });
 // end - PageAddCommand
 // start - PageCommunity
-const PageCommunity = React.createClass({
+const PageCommunity = ReactRedux.connect(
+	function(state, ownProps) {
+		let { location:{pathname} } = ownProps; // router
+		let pagestate = state.pages_state[pathname] || {};
+
+		return {
+			remotecommands: pagestate.remotecommands,
+			filterterm: pagestate.filterterm
+		}
+	}
+)(React.createClass({
 	displayName: 'PageCommunity',
+	goBack: e => stopClickAndCheck0(e) ? loadOldPage('/add') : null,
+	loadRemoteCommands: async function() {
+		let { location:{pathname} } = this.props; // router
+
+		// start spinner if it hasnt already
+		store.dispatch(modPageState(pathname, { remotecommands:undefined, remotecommands_error:undefined })); // when clicking "Try Again" this will cause spinner to show, and error to hide // if this is first run, on first render, then it `modPageState` will see that there is no change as `remotecommands_error` is not there it is already `undefined`
+
+		let remotecommands = [];
+		try {
+			// get file tree
+			let tree;
+			try {
+				let xp = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/git/trees/master', { restype:'json' });
+				let { status, response } = xp.xhr;
+				if (status !== 200) throw xp;
+				({ tree } = response);
+			} catch(xperr) {
+				let { errtext='Unhandled server response when fetching command tree.', reason:xhrreason, xhr:{response, status}} = xperr;
+				throw {	errtext, xhrreason, response, status };
+			}
+
+			// get install counts
+			let installs;
+			try {
+				let xp = await xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=getcount', { restype:'json' });
+				let { status, response } = xp.xhr;
+				if (status !== 200) throw xp;
+				({ installs } = response);
+			} catch(xperr) {
+				let { errtext='Unhandled server response when fetching install counts.', reason:xhrreason, xhr:{response, status}} = xperr;
+				throw {	errtext, xhrreason, response, status };
+			}
+
+			// get commits - used for history and statistics
+			let commits;
+			try {
+				let xp = await xhrPromise('http://api.github.com/repos/Noitidart/Trigger-Community/commits?per_page=1000000', { restype:'json' });
+				let { status, response } = xp.xhr;
+				if (status !== 200) throw xp;
+				commits = response;
+			} catch(xperr) {
+				let { errtext='Unhandled server response when fetching command details.', reason:xhrreason, xhr:{response, status}} = xperr;
+				throw {	errtext, xhrreason, response, status };
+			}
+			// clean out commits
+			commits = commits.reduce((acc, el) => {
+				let commit = {
+					commit_sha: el.sha,
+					name: el.committer.login, // name of author
+					date: new Date(el.commit.committer.date),
+					message: el.commit.message
+				};
+
+				// to get the contents of the file at thsi point see - http://stackoverflow.com/a/16707165/1828637
+				// so i will not do this until the user clicks "Version"
+
+
+				if (commit.name == 'web-flow') return acc; // this is a PR merge, `el.commit.author.name` will be "Noitidart" discard // `el.commit.comitter.name` will be "Github"
+
+				// cant do the ='s test as it is 0, 1, or 2 ='s per http://stackoverflow.com/a/8571544/1828637
+				// if (!commit.message.endsWith('=')) return acc; // is not a btoa string
+				try {
+					commit.message = JSON.parse(atob(commit.message));
+				} catch(ex) {
+					console.error('ERROR: Trying to `JSON.parse` the `atob` of it caused error. commit.message:', commit.message);
+					return acc; // this is not a proper message, so it is not one of my files, discard it
+				}
+
+				acc.push(commit);
+
+				return acc;
+			}, []);
+
+			console.log('commits:', commits);
+
+			// entry: { hotkey: HotkeyStruct, history,  } // history is contents entries with info
+
+			// get contents of each file in tree
+			let basket = new PromiseBasket; // for fetching content of each file
+
+			for (let {path, url, sha:file_sha} of tree) {
+				if (!path.endsWith('.json')) continue;
+				let filename = path.substr(0, path.indexOf('.json'));
+				if (filename.length != 8) continue; // i made the change to 8 char filename when started commit message of btoa
+
+				basket.add(
+					(async function() {
+
+						let content;
+						try {
+							let xp = await xhrPromise(url, { restype:'json', headers:{Accept:'application/vnd.github.v3+json'} });
+							let { status, response } = xp.xhr;
+							if (status !== 200) throw xp;
+							content = JSON.parse(atob(response.content));
+						} catch(xperr) {
+							let { errtext='Unhandled server response when fetching command content for file:' + filename, reason:xhrreason, xhr:{response, status}} = xperr;
+							throw {	errtext, xhrreason, response, status };
+						}
+
+						let remotecommand = {
+							_installs: 0,
+							_versions: [],
+							filename,
+							file_sha,
+							content
+						};
+
+						remotecommands.push(remotecommand);
+					})()
+				);
+			}
+
+			await basket.run();
+			console.log('ok basket done, remotecommands:', remotecommands);
+
+		} catch(remotecommands_error) {
+			let { response } = remotecommands_error;
+
+			if (response && typeof(response) == 'object')
+				remotecommands_error.beautified_response = await new Promise(resolve => callInBootstrap('beautifyText', { js:JSON.stringify(response) }, val=>resolve(val)));
+
+			delete remotecommands_error.response; // delete if it had one
+
+			store.dispatch(modPageState(pathname, { remotecommands_error }));
+			return;
+		}
+
+		store.dispatch(modPageState(pathname, { remotecommands }));
+	},
 	render() {
-		return React.createElement('div', undefined,
-			'PageCommunity'
+		let { remotecommands_error, remotecommands, searchterm } = this.props; // mapped state
+
+		if (!remotecommands && !remotecommands_error) // first render i think - i hope
+			setTimeout(this.loadRemoteCommands)
+
+		let issearched = remotecommands && searchterm;
+
+		return React.createElement('span', undefined,
+			// controls
+			React.createElement('div', { className:'row text-center' },
+				React.createElement('div', { className:'col-lg-12' },
+					React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
+						React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
+						' ' + browser.i18n.getMessage('back')
+					),
+					React.createElement('div', { className:'input-group pull-right' },
+						React.createElement('select', { className:'form-control', id:'sort', style:{borderRadius:'4px'}, disabled:!remotecommands },
+							React.createElement('option', { value:'alpha_asc' },
+								'Alphabetical'
+							),
+							React.createElement('option', { value:'alpha_asc' },
+								'Most Installed'
+							),
+							React.createElement('option', { value:'alpha_asc' },
+								'Recently Updated'
+							)
+						)
+					),
+					React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
+						React.createElement('input', { className:'form-control', placeholder:'Search', id:'search', type:'text', disabled:!remotecommands }),
+						issearched && React.createElement('div', { className:'input-group-btn' },
+							React.createElement('a', { href:'#', className:'btn btn-default btn-danger' },
+								React.createElement('i', { className:'glyphicon glyphicon-remove' })
+							)
+						)
+					)
+				)
+			),
+			React.createElement('hr'),
+			// content
+			React.createElement('div', { className:'row' + (!remotecommands ? ' text-center' : '') },
+				remotecommands_error && React.createElement('button', { className:'btn btn-lg btn-default no-btn', style:{marginLeft:'-80px'} },
+					React.createElement('span', { className:'glyphicon glyphicon-refresh', onClick:this.loadRemoteCommands }),
+					' ' + browser.i18n.getMessage('try_again')
+				),
+				remotecommands_error && React.createElement(RemoteCommandsLoadError, { remotecommands_error }),
+				!remotecommands && React.createElement('button', { className:'btn btn-lg btn-default no-btn', style:{marginLeft:'-80px'} },
+					React.createElement('span', { className:'glyphicon glyphicon-globe spinning' }),
+					' ' + browser.i18n.getMessage('loading_community')
+				),
+				remotecommands &&
+				React.createElement('div', { className:'row'},
+					// categories filter
+					React.createElement('div', { className:'col-md-3' },
+						React.createElement('div', { className:'list-group' },
+							React.createElement('h4', undefined,
+								'Categories'
+							),
+							[{id:-1, text:browser.i18n.getMessage('all')}, ...GROUPS].map(({id, text}) =>
+								React.createElement('a', { className:'list-group-item', href:'#', style:(id !== -1 ? undefined : {backgroundColor:'#f0f0f0'}) }, // if active, give it style `#f0f0f0` (which is the hover background-color) rather then `active`. active is too dark.
+									React.createElement('span', { className:'badge' },
+										remotecommands.reduce((sum, remotecommand)=>(id === remotecommand.content.group || id === -1) ? sum+1 : sum, 0)
+									),
+									' ',
+									text
+								)
+							)
+						)
+					),
+					// hotkey results
+					React.createElement('div', { className:'col-md-9' },
+						pushAlternatingRepeating(remotecommands.map(remotecommand => React.createElement(RemoteCommand, { remotecommand, key:remotecommand.filename })), React.createElement('hr'))
+					)
+				)
+			),
+			React.createElement('hr')
 		);
 	}
-});
+}));
+
+const RemoteCommandsLoadError = ({errtext, xhrreason, status, beautified_response}) =>
+React.createElement('span', undefined,
+	'Failed to load community from Github. ' + errtext,
+	React.createElement('br'),
+	React.createElement('br'),
+	status && React.createElement('dl', undefined,
+		React.createElement('dt', undefined,
+			React.createElement('dd', undefined,
+				'Status Code: ' + status
+			),
+			React.createElement('dd', undefined,
+				'XHR Reason: ' + xhrreason
+			),
+			React.createElement('dd', undefined,
+				'Response:',
+				React.createElement('pre', undefined, beautified_response)
+			)
+		)
+	)
+);
+
+const RemoteCommand = ReactRedux.connect(
+	function(state, ownProps) {
+		return {};
+	}
+)(React.createClass({
+	displayName: 'RemoteCommand',
+	render() {
+		let { remotecommand } = this.props;
+		let { filename, file_sha, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = remotecommand;
+
+		// figure out if it is installed, and if it is lower version, or higher version, or custom based on lower version, or custom based on this version
+		let has_pref_hotkey = false; // pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
+		let isinstalled;
+		if (has_pref_hotkey) {
+			isinstalled = {};
+		}
+
+		return React.createElement('div', { className:'row' },
+			React.createElement('div', { className:'col-sm-4' },
+				React.createElement('img', { className:'img-responsive', src:'http://placehold.it/1280X720' }),
+			),
+			React.createElement('div', { className:'col-sm-8' },
+				React.createElement('h3', undefined,
+					name, ' ',
+					React.createElement('small', undefined,
+						browser.i18n.getMessage('addon_version_long', '2')
+					)
+				),
+				React.createElement('p', { className:'text-muted pull-right' },
+					React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
+						React.createElement('span', { className:'glyphicon glyphicon-cloud-download' }),
+						' ', '141'
+					),
+					' ',
+					React.createElement('span', { title:browser.i18n.getMessage('last_updated'), style:{margin:'0 7px'} },
+						React.createElement('span', { className:'glyphicon glyphicon-calendar' }),
+						' ', 'July 24, 2016'
+					)
+				),
+				React.createElement('p', undefined,
+					React.createElement('a', { href:'#', className:'btn btn-default btn-success', disabled:isinstalled },
+						React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
+						' ', (isinstalled ? browser.i18n.getMessage('installed') : browser.i18n.getMessage('install'))
+					),
+					' ',
+					React.createElement('a', { href:'#', className:'btn btn-default' },
+						React.createElement('span', { className:'glyphicon glyphicon-dashboard' }),
+						' ', browser.i18n.getMessage('versions')
+					)
+				),
+				React.createElement('p', undefined,
+					description
+				),
+				React.createElement('p', { className:'text-muted' },
+					'Missing Languages: none'
+				)
+			)
+		);
+	}
+}))
 // end - PageCommunity
 const PageInvalid = React.createClass({
 	displayName: 'PageInvalid',
@@ -1188,798 +1482,6 @@ const PageInvalid = React.createClass({
 		);
 	}
 });
-
-let gCommunityData;
-let Page = React.createClass({
-	displayName: 'Page',
-	// functions for create_command and edit_command pages
-	validateForm() {
-
-		let ids = ['name', 'description', 'code'];
-		let isvalid = true;
-		for (let id of ids) {
-			if (document.getElementById(id).value.trim().length === 0) {
-				isvalid = false;
-				break;
-			}
-		}
-
-		if (editing.isvalid !== isvalid) {
-			store.dispatch(setMainKeys({
-				editing: {
-					...store.getState().editing,
-					isvalid
-				}
-			}));
-		}
-	},
-	revertCode(e) {
-		if (!stopClickAndCheck0(e)) return;
-
-		let { editing:{filename}, pref_hotkeys } = this.props;
-
-		let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
-		let { command:{content:{code:{exec:code}}} } = pref_hotkey;
-
-		document.getElementById('code').value = code;
-	},
-	beautifyCode(e) {
-		if (!stopClickAndCheck0(e)) return;
-
-		let elcode = document.getElementById('code');
-		let js = elcode.value;
-		callInBootstrap('beautifyText', { js }, beautified => elcode.value = beautified);
-	},
-	// functions for add_command pages
-	loadCreateHotkey(e) {
-		if (!stopClickAndCheck0(e)) return;
-
-		store.dispatch(setMainKeys(
-			{
-				page_history: [...store.getState().page_history, 'create_command'], // changes the page
-				editing: {
-					filename: '_' + genFilename(), // tells it what to save with
-					isvalid: false // if the form is currently valid
-				}
-			}
-		));
-	},
-	//
-	render() {
-		let { page_history } = this.props; // mapped state
-		let { load, reload } = this.props; // dispatchers
-
-		let page = page_history[page_history.length - 1];
-
-		let rels = [];
-		switch (page) {
-			case 'add_command': {
-					rels.push(
-						React.createElement('div', { className:'row text-center' },
-							React.createElement('a', { href:'#', className:'btn btn-default btn-lg', onClick:load.bind(null, 'community') },
-								React.createElement('span', { className:'glyphicon glyphicon-globe' }),
-								' ',
-								'Browse Community Shared Commands'
-							),
-							' ',
-							React.createElement('a', { href:'#', className:'btn btn-default btn-lg', onClick:this.loadCreateHotkey },
-								React.createElement('span', { className:'glyphicon glyphicon-console' }),
-								' ',
-								'Write New Command'
-							)
-						)
-					);
-				break;
-			}
-			case 'my_hotkeys': {
-					// rels = [
-					// 	React.createElement('div', { className:'row text-center' },
-					// 		React.createElement(Hotkey),
-					// 		React.createElement(Hotkey),
-					// 		React.createElement(HotkeyAdd)
-					// 	)
-					// ]
-					let { pref_hotkeys } = this.props; // mapped state
-
-					let hotkeys_cnt = pref_hotkeys.length;
-
-					const HOTKEYS_PER_ROW = 4; // based on twitter-bootstrap system
-
-					let rows_cnt = Math.ceil((hotkeys_cnt + 1) / HOTKEYS_PER_ROW); // + 1 for HotkeyAdd block
-					let hotkeyi = -1;
-					for (let rowi=0; rowi<rows_cnt; rowi++) {
-						let row_rels = [];
-						for (let rowreli=0; rowreli<HOTKEYS_PER_ROW; rowreli++) {
-							hotkeyi++;
-							if (hotkeyi > hotkeys_cnt - 1) {
-								// push in HotkeyAdd
-								row_rels.push(
-									React.createElement(HotkeyAdd)
-								);
-								break;
-							} else {
-								row_rels.push(
-									React.createElement(Hotkey, { pref_hotkey:pref_hotkeys[hotkeyi] })
-								);
-							}
-						}
-						rels.push(
-							React.createElement('div', { className:'row text-center' },
-								...row_rels
-							)
-						);
-					}
-				break;
-			}
-			case 'create_command':
-			case 'edit_command': {
-					let { editing, pref_hotkeys } = this.props; // mapped state
-
-					let locale='en-US'; // TODO: check to see if users locale is available, if not then check if English is available, if not then check whatever locale is avail
-
-					let name, description, code, group=0; // default group "Uncategorized"
-					if (page == 'edit_command') {
-						// update defaults from current values of hotkey
-						let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == editing.filename);
-						({ group,  locale:{[locale]:{name,description}}, code:{exec:code} } = pref_hotkey.command.content);
-					}
-
-					rels.push(
-						React.createElement('form', undefined,
-							// React.createElement('div', { className:'input-group' },
-							// 	React.createElement('span', { className:'input-group-addon' },
-							// 		'Language'
-							// 	),
-							// 	React.createElement('input', { className:'form-control' }),
-							// 	// React.createElement('div', { className:'input-group-btn open' },
-							// 	React.createElement('div', { className:'input-group-btn' },
-							// 		React.createElement('button', { type:'button', className:'btn btn-default dropdown-toggle' },
-							// 			'English',
-							// 			' ',
-							// 			React.createElement('span', { className:'caret' })
-							// 		),
-							// 		React.createElement('ul', { className:'dropdown-menu dropdown-menu-right' },
-							// 			React.createElement('li', undefined,
-							// 				React.createElement('div', { className:'input-group input-group-sm', style:{margin:'0 auto'} },
-							// 					React.createElement('input', { className:'form-control', type:'text', disabled:'disabled', id:'locale' })
-							// 				)
-							// 			),
-							// 			React.createElement('li', { className:'divider' } ),
-							// 			React.createElement('li', undefined,
-							// 				React.createElement('a', { href:'#' },
-							// 					'French'
-							// 				)
-							// 			),
-							// 			React.createElement('li', undefined,
-							// 				React.createElement('a', { href:'#' },
-							// 					'Spanish'
-							// 				)
-							// 			)
-							// 		)
-							// 	)
-							// ),
-
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon' },
-									browser.i18n.getMessage('group')
-								),
-								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
-								React.createElement('select', { className:'form-control', id:'group', onChange:this.validateForm, defaultValue:group },
-									GROUPS.map(({id:value, text}) =>
-										React.createElement('option', { value },
-											text
-										)
-									)
-								)
-							),
-
-							// React.createElement('br'),
-							// React.createElement('div', { className:'input-group' },
-							// 	React.createElement('span', { className:'input-group-addon' },
-							// 		'Language'
-							// 	),
-							// 	React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
-							// 	React.createElement('select', { className:'form-control', id:'locale', onChange:this.validateForm, defaultValue:locale },
-							// 		React.createElement('option', { value:'en-US' },
-							// 			'English'
-							// 		)
-							// 	)
-							// ),
-
-							React.createElement('br'),
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon' },
-									'Name'
-								),
-								React.createElement('input', { className:'form-control', type:'text', id:'name', onChange:this.validateForm, defaultValue:name }),
-								React.createElement(LocalePicker, { locale })
-							),
-
-							React.createElement('br'),
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon' },
-									'Description'
-								),
-								React.createElement('input', { className:'form-control', type:'text', id:'description', onChange:this.validateForm, defaultValue:description }),
-								React.createElement(LocalePicker, { locale })
-							),
-
-							React.createElement('br'),
-							React.createElement('div', { className:'input-group' },
-								React.createElement('span', { className:'input-group-addon', style:{verticalAlign:'top', paddingTop:'9px'} },
-									'Code',
-									React.createElement('br'),
-									React.createElement('br'),
-									React.createElement('div', { className:'btn-group' },
-										React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Beautify', onClick:this.beautifyCode, tabIndex:'-1' },
-											React.createElement('span', { className:'glyphicon glyphicon-console' })
-										),
-										page == 'edit_command' && React.createElement('a', { href:'#', className:'btn btn-default btn-sm', 'data-tooltip':'Revert', onClick:this.revertCode, tabIndex:'-1' },
-											React.createElement('span', { className:'glyphicon glyphicon-repeat' })
-										)
-									)
-								),
-								React.createElement('input', { className:'form-control', type:'text', style:{display:'none'} }),
-								React.createElement('div', { className:'form-group' },
-									React.createElement('textarea', { className:'form-control', id:'code', onChange:this.validateForm, defaultValue:code, style:{resize:'vertical',minHeight:'100px'} })
-								)
-							)
-						)
-					);
-				break;
-			}
-			case 'community': {
-					let { pref_hotkeys } = this.props; // mapped state
-
-					if (!gCommunityData) {
-						rels.push(
-							React.createElement('div', { className:'row text-center' },
-								React.createElement('button', { className:'btn btn-lg btn-default no-btn' },
-									React.createElement('span', { className:'glyphicon glyphicon-globe spinning' }),
-									' ',
-									'Loading community from Github server...'
-								)
-							)
-						);
-
-						setTimeout(async function() {
-							// get file tree
-							let tree;
-							try {
-								let xp = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/git/trees/master', { restype:'json' }); // can throw
-								let { xhr:{status, response} } = xp;
-								if (status !== 200) throw xp; // can throw
-								({ tree } = response);
-							} catch(xperr) {
-								let extra_reason = 'Failed to get latest community data from server.';
-								let error = {err, extra_reason};
-								console.error('error:', error);
-								gCommunityData = { error }
-								reload('community');
-								return;
-							}
-
-							// get install counts
-							let installs;
-							try {
-								let xp = await xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=getcount', { restype:'json' }); // can throw
-								let { xhr:{status, response} } = xp;
-								if (status !== 200) throw xp; // can throw
-								commits = response;
-							} catch(err) {
-								let extra_reason = 'Failed to get install counts from server';
-								let error = {err, extra_reason};
-								console.error('error:', error);
-								gCommunityData = { error }
-								reload('community');
-								return;
-							}
-
-							// get commits - used for history and statistics
-							let commits;
-							try {
-								let xp = await xhrPromise('http://api.github.com/repos/Noitidart/Trigger-Community/commits?per_page=1000000', { restype:'json' }); // can throw
-								let { xhr:{status, response} } = xp;
-								if (status !== 200) throw xp; // can throw
-								commits = response;
-							} catch(err) {
-								let extra_reason = 'Failed to get community history from server';
-								let error = {err, extra_reason};
-								console.error('error:', error);
-								gCommunityData = { error }
-								reload('community');
-								return;
-							}
-							// clean out commits
-							commits = commits.reduce((acc, el) => {
-								let commit = {
-									commit_sha: el.sha,
-									name: el.committer.login, // name of author
-									date: new Date(el.commit.committer.date),
-									message: el.commit.message
-								};
-
-								// to get the contents of the file at thsi point see - http://stackoverflow.com/a/16707165/1828637
-								// so i will not do this until the user clicks "Version"
-
-
-								if (commit.name == 'web-flow') return acc; // this is a PR merge, `el.commit.author.name` will be "Noitidart" discard // `el.commit.comitter.name` will be "Github"
-
-								// cant do the ='s test as it is 0, 1, or 2 ='s per http://stackoverflow.com/a/8571544/1828637
-								// if (!commit.message.endsWith('=')) return acc; // is not a btoa string
-								try {
-									commit.message = JSON.parse(atob(commit.message));
-								} catch(ex) {
-									console.error('ERROR: Trying to `JSON.parse` the `atob` of it caused error. commit.message:', commit.message);
-									return acc; // this is not a proper message, so it is not one of my files, discard it
-								}
-
-								acc.push(commit);
-
-								return acc;
-							}, []);
-
-							console.log('commits:', commits);
-
-
-							let hotkeys_data = [];
-							// entry: { hotkey: HotkeyStruct, history,  } // history is contents entries with info
-
-							// get contents of each file in tree
-							let basket = new PromiseBasket; // for fetching content of each file
-
-							for (let {path, url, sha:file_sha} of tree) {
-								if (!path.endsWith('.json')) continue;
-								let filename = path.substr(0, path.indexOf('.json'));
-								if (filename.length != 8) continue; // i made the change to 8 char filename when started commit message of btoa
-
-								basket.add(
-									(async function() {
-										let xpcontent = await xhrPromise(url, { restype:'json', headers:{Accept:'application/vnd.github.v3+json'} });
-										let xcontent = xpcontent.xhr;
-										if (xcontent.status !== 200) throw 'Failed to get contents for file ${filename}';
-
-										let { response:{content:encoded_content} } = xcontent;
-										let hotkey = {
-											enabled: false,
-											combo: null,
-											filename,
-											file_sha,
-											command: {
-												content: JSON.parse(atob(encoded_content))
-											}
-										};
-
-										hotkeys_data.push({
-											hotkey
-										});
-									})()
-								);
-							}
-
-							await basket.run();
-							console.log('ok basket done, hotkeys_data:', hotkeys_data);
-
-							// get
-
-							gCommunityData = { hotkeys_data };
-
-							reload('community');
-						}, 0);
-					} else {
-						let { error, hotkeys_data } = gCommunityData;
-						gCommunityData = undefined;
-
-						if (error) {
-							let { xp={}, extra_reason } = error;
-							let { xhr={} } = xp;
-							let { status, response } = xhr;
-							rels.push(
-								React.createElement('div', { className:'row text-center' },
-									'Failed to connect to community. ' + extra_reason,
-									React.createElement('br'),
-									React.createElement('br'),
-									React.createElement('dl', undefined,
-										React.createElement('dt', undefined,
-											React.createElement('dd', undefined,
-												'Status Code: ' + status
-											),
-											React.createElement('dd', undefined,
-												'Response: ' + JSON.stringify(response)
-											)
-										)
-									)
-								)
-							);
-						} else {
-							// hotkeys_data
-							console.log('ok hotkeys_data:', hotkeys_data);
-
-							rels.push(
-								// categories filter
-								React.createElement('div', { className:'row'},
-									React.createElement('div', { className:'col-md-3' },
-										React.createElement('div', { className:'list-group' },
-											React.createElement('h4', undefined,
-												'Categories'
-											),
-											[{id:-1, text:browser.i18n.getMessage('all')}, ...GROUPS].map(({id, text}) =>
-												React.createElement('a', { className:'list-group-item', href:'#', style:(id !== -1 ? undefined : {backgroundColor:'#f0f0f0'}) }, // if active, give it style `#f0f0f0` (which is the hover background-color) rather then `active`. active is too dark.
-													React.createElement('span', { className:'badge' },
-														'0'
-													),
-													' ',
-													text
-												)
-											)
-										)
-									),
-									// hotkey results
-									React.createElement('div', { className:'col-md-9' },
-										hotkeys_data.map(entry => {
-											let locale = 'en-US'; // TODO: detect and fallback
-											let { filename, file_sha, command:{content:{group, locale:{'en-US':{name, description}}, code:{exec:code}}} } = entry.hotkey;
-
-											// figure out if it is installed, and if it is lower version, or higher version, or custom based on lower version, or custom based on this version
-											let has_pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
-											let isinstalled;
-											if (has_pref_hotkey) {
-												isinstalled = {};
-											}
-
-											return [
-												React.createElement('div', { className:'row' },
-													React.createElement('div', { className:'col-sm-4' },
-														React.createElement('img', { className:'img-responsive', src:'http://placehold.it/1280X720' }),
-													),
-													React.createElement('div', { className:'col-sm-8' },
-														React.createElement('h3', undefined,
-															name, ' ',
-															React.createElement('small', undefined,
-																browser.i18n.getMessage('addon_version_long', '2')
-															)
-														),
-														React.createElement('p', { className:'text-muted pull-right' },
-															React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
-																React.createElement('span', { className:'glyphicon glyphicon-cloud-download' }),
-																' ', '141'
-															),
-															' ',
-															React.createElement('span', { title:browser.i18n.getMessage('last_updated'), style:{margin:'0 7px'} },
-																React.createElement('span', { className:'glyphicon glyphicon-calendar' }),
-																' ', 'July 24, 2016'
-															)
-														),
-														React.createElement('p', undefined,
-															React.createElement('a', { href:'#', className:'btn btn-default btn-success', disabled:isinstalled },
-																React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
-																' ', (isinstalled ? browser.i18n.getMessage('installed') : browser.i18n.getMessage('install'))
-															),
-															' ',
-															React.createElement('a', { href:'#', className:'btn btn-default' },
-																React.createElement('span', { className:'glyphicon glyphicon-dashboard' }),
-																' ', browser.i18n.getMessage('versions')
-															)
-														),
-														React.createElement('p', undefined,
-															description
-														),
-														React.createElement('p', { className:'text-muted' },
-															'Missing Languages: none'
-														)
-													)
-												),
-												entry != hotkeys_data[hotkeys_data.length-1] ? React.createElement('hr') : undefined // dont show hr on last entry
-											]
-										})
-									)
-								)
-							);
-						}
-					}
-				break;
-			}
-		};
-
-		return React.createElement('span', undefined,
-			rels
-		);
-	}
-});
-
-let Controls = React.createClass({
-	displayName: 'Controls',
-	// for page edit_command and create_command
-	saveHotkey(e) {
-		let { editing, page_history } = this.props; // mapped state
-		let isvalid = (editing && editing.isvalid);
-
-		if (stopClickAndCheck0(e) && isvalid) {
-			let { filename } = editing;
-			let newhotkey = {
-				enabled: false, // assuming it was just created, if this is edit, this is copied from pref_hotkey
-				filename,
-				combo: null, // assuming it was just created, if this is edit, this is copied from pref_hotkey
-				// changes_since_base // added below if it is edit of isgitfile (!islocal)
-				// base_file_sha // added below if it is edit of isgitfile (!islocal)
-				command: {
-					// file_sha
-					content: {
-						group: document.getElementById('group').value,
-						locale: {
-							'en-US': {
-								name: document.getElementById('name').value.trim(),
-								description: document.getElementById('description').value.trim()
-							}
-						},
-						code: {
-							exec: document.getElementById('code').value.trim()
-						}
-					}
-				}
-			};
-
-			let state = store.getState();
-			let { pref_hotkeys } = state.stg;
-
-			// is new creation? or edit?
-			let page = page_history[page_history.length-1];
-			let isedit = page == 'edit_command';
-
-			let isreallyedited = false;
-			if (isedit) {
-				let pref_hotkey = pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
-
-				// test if anything changed - and if it wasnt, then take into newhotkey reference to it
-				if (JSON.stringify(newhotkey.command.content) != JSON.stringify(pref_hotkey.command.content)) {
-					// changed
-					isreallyedited = true;
-
-					// copy non-editables (non-editable by this form) from the pref_hotkey to newhotkey
-					// like `enabled`, `combo`. `filename` is the same so no need to copy that
-					for (let p in pref_hotkey) {
-						if (p == 'command') continue;
-						newhotkey[p] = pref_hotkey[p];
-					}
-
-
-				}
-			}
-
-			// storageCall and dispatch if necessary (ie: not dispatching if `(isedit && !isreallyedited)` )
-			// compound action - set hotkey and change page
-			if (isreallyedited) {
-				// pref_hotkeys[edit_pref_hotkey_ix] = newhotkey; // dont do this, we want to change the reference to the array entry, so we create new array below with .map
-				let newstg = {
-					...state.stg,
-					pref_hotkeys: pref_hotkeys.map(a_pref_hotkey => a_pref_hotkey.filename == newhotkey.filename ? newhotkey : a_pref_hotkey)
-				};
-
-				// go back to 'my_hotkeys'
-				let newpagehistory = ['my_hotkeys'];
-
-				store.dispatch(setMainKeys({
-					stg: newstg,
-					page_history: newpagehistory
-				}));
-
-				// update storage
-				let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
-				callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals })
-			} else if (!isedit) {
-				// so iscreate = true
-				let newstg = {
-					...state.stg,
-					pref_hotkeys: [...pref_hotkeys, newhotkey]
-				};
-
-				// go back to 'my_hotkeys'
-				let newpagehistory = ['my_hotkeys'];
-
-				store.dispatch(setMainKeys({
-					stg: newstg,
-					page_history: newpagehistory
-				}));
-
-				// update storage
-				let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
-				callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
-			}
-		}
-	},
-	// for page my_hotkeys
-	oauthAddForget(serviceid) {
-		let { oauth } = this.props; // mapped state
-		if (oauth[serviceid]) {
-			// forget
-			let state = store.getState();
-			let newstg = {
-				...state.stg,
-				mem_oauth: { ...state.stg.mem_oauth }
-			};
-			delete newstg.mem_oauth[serviceid];
-
-			store.dispatch(setMainKeys({
-				stg: newstg
-			}));
-
-			let stgvals = { mem_oauth:newstg.mem_oauth };
-			callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
-		} else {
-			// add
-			callInBackground('openAuthTab', { serviceid });
-		}
-	},
-	//
-	render() {
-		let { page_history } = this.props; // mapped state
-		let { back } = this.props; // dispatchers
-
-		let page = page_history[page_history.length - 1];
-		let rels = [];
-
-		// meat
-		switch (page) {
-			case 'community': {
-				if (gCommunityData) { // very risky - as if Controls renders after Page, then gCommunityData is blanked. But I think in render order Controls renders frist
-					// sort
-					rels.push(
-						React.createElement('div', { className:'input-group pull-right' },
-							React.createElement('select', { className:'form-control', id:'sort', style:{borderRadius:'4px'} },
-								React.createElement('option', { value:'alpha_asc' },
-									'Alphabetical'
-								),
-								React.createElement('option', { value:'alpha_asc' },
-									'Most Installed'
-								),
-								React.createElement('option', { value:'alpha_asc' },
-									'Recently Updated'
-								)
-							)
-						)
-					);
-
-					// search
-					rels.push(
-						React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
-							React.createElement('input', { className:'form-control', placeholder:'Search', id:'search', type:'text' }),
-							React.createElement('div', { className:'input-group-btn' },
-								React.createElement('a', { href:'#', className:'btn btn-default btn-danger' },
-									React.createElement('i', { className:'glyphicon glyphicon-remove' })
-								)
-							)
-						)
-					);
-				}
-				//
-				// 	React.createElement('ul', { className:'pagination' },
-				// 		React.createElement('li', undefined,
-				// 			React.createElement('a', { href:'#' },
-				// 				'«'
-				// 			)
-				// 		),
-				// 		React.createElement('li', { className:'active' },
-				// 			React.createElement('a', { href:'#' },
-				// 				'1'
-				// 			)
-				// 		),
-				// 		React.createElement('li', undefined,
-				// 			React.createElement('a', { href:'#' },
-				// 				'2'
-				// 			)
-				// 		),
-				// 		React.createElement('li', undefined,
-				// 			React.createElement('a', { href:'#' },
-				// 				'»'
-				// 			)
-				// 		)
-				// 	)
-
-				break;
-			}
-			case 'my_hotkeys':
-					let { oauth } = this.props; // mapped state
-
-					rels.push('Manage your collection of hotkeys here. You can browse the community shared commands by click "Add" and then "Community". You can create your own custom commands and share it with the community.');
-					rels.push(React.createElement('br'));
-					rels.push(React.createElement('br'));
-					for (let serviceid in nub.oauth) {
-						rels.push(
-							React.createElement('div', { className:'row text-center' },
-								React.createElement('div', { className:'col-lg-12' },
-									React.createElement('img', { src:'../images/' + serviceid + '.png', width:'22px', height:'22px', className:'pull-left' }),
-									React.createElement('span', { className:'pull-left', style:oauth[serviceid] ? undefined : {fontStyle:'italic'} },
-										!oauth[serviceid] ? '(no account)' : deepAccessUsingString(oauth[serviceid], nub.oauth[serviceid].dotname)
-									),
-									React.createElement('a', { href:'#', className:'btn btn-default btn-sm pull-right', onClick:this.oauthAddForget.bind(null, serviceid) },
-										React.createElement('span', { className:'glyphicon glyphicon-' + (oauth[serviceid] ? 'minus-sign' : 'plus-sign') }),
-										' ',
-										oauth[serviceid] ? 'Forget Account' : 'Authorize Account'
-									)
-								)
-							)
-						);
-					}
-				break;
-			case 'create_command':
-			case 'edit_command':
-					let { editing } = this.props; // mapped state
-
-					let isvalid = (editing && editing.isvalid);
-					rels.push(
-						React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:!isvalid, onClick:this.saveHotkey, tabIndex:(isvalid ? undefined : '-1') },
-							React.createElement('span', { className:'glyphicon glyphicon-ok' }),
-							' ',
-							page == 'edit_command' ? 'Update Command' : 'Add Command'
-						),
-						' '
-					);
-				break;
-		}
-
-		// has back button?
-		if (page_history.length > 1) {
-			rels.splice(0, 0,
-				React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:back },
-					React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
-					' ',
-					'Back'
-				),
-				' '
-			);
-		}
-		return React.createElement('div', { className:'row text-center' },
-			React.createElement('div', { className:'col-lg-12' },
-				rels
-			)
-		);
-	}
-});
-
-let ControlsContainer = ReactRedux.connect(
-	function(state, ownProps) {
-		return {
-			page_history: state.page_history,
-			editing: state.editing,
-			oauth: state.stg.mem_oauth
-		}
-	},
-	function(dispatch, ownProps) {
-		return {
-			back: e => stopClickAndCheck0(e) ? dispatch(prevPage()) : undefined,
-			savehtk: e => stopClickAndCheck0(e) ? dispatch(prevPage()) : undefined
-		}
-	}
-)(Controls);
-
-let PageContainer = ReactRedux.connect(
-	function(state, ownProps) {
-		return {
-			page_history: state.page_history,
-			editing: state.editing,
-			pref_hotkeys: state.stg.pref_hotkeys
-		}
-	},
-	function(dispatch, ownProps) {
-		return {
-			load: (page, e) => stopClickAndCheck0(e) ? dispatch(loadPage(page)) : undefined,
-			reload: (page, e) => stopClickAndCheck0(e) ? dispatch(reloadPageIf(page)) : undefined
-			// enable: () => {
-			// 	let lat = document.getElementById('lat').value;
-			// 	let lng = document.getElementById('lng').value;
-			//
-			// 	let stgvals = { pref_lat:lat, pref_lng:lng, mem_faking:true };
-			// 	callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals }, ()=>callInBackground('setFaking', true))
-			// 	dispatch(setStgs(stgvals));
-			// },
-			// disable: () => {
-			// 	let stgvals = { mem_faking:false };
-			// 	callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals }, ()=>callInBackground('setFaking', false))
-			// 	dispatch(setStgs(stgvals));
-			// }
-		}
-	}
-)(Page);
 
 function genFilename() {
 	// salt generator from http://mxr.mozilla.org/mozilla-aurora/source/toolkit/profile/content/createProfileWizard.js?raw=1*/
@@ -2009,6 +1511,8 @@ function pushAlternatingRepeating(aTargetArr, aEntry) {
 	for (let i=l-1; i>0; i--) {
 		aTargetArr.splice(i, 0, aEntry);
 	}
+
+	return aTargetArr;
 }
 function stopClickAndCheck0(e) {
 	if (!e) return true;
@@ -2370,9 +1874,12 @@ async function getUnixTime(opt) {
 }
 function getFormValues(domids) {
 	// let domids = ['name', 'description', 'code'];
+	let processors = {group:parseInt} // custom for Trigger
 	let domvalues = {};
 	for (let domid of domids) {
 		let domvalue = document.getElementById(domid).value.trim();
+		let processor = processors[domid];
+		if (processor) domvalue = processor(domvalue);
 		domvalues[domid] = domvalue;
 	}
 	return domvalues;

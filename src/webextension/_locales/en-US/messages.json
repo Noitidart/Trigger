@@ -98,6 +98,9 @@
 	"tooltip_revert": { "message": "Revert" },
 
 	"back": { "message": "Back" },
+	"try_again": { "message": "Try Again" },
+
+	"loading_community": { "message": "Loading community from Github..." },
 
 	"github_auth_needed": { "message": "You need to authorize your Github account. Authorize now?" },
 	"github_shared_success": { "message":"Succesfully shared! Pending approval. Open approval topic in new tab?" },
