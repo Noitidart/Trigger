@@ -97,6 +97,10 @@
 	"tooltip_beautify": { "message": "Beautify" },
 	"tooltip_revert": { "message": "Revert" },
 
-	"back": { "message": "Back" }
+	"back": { "message": "Back" },
+
+	"github_auth_needed": { "message": "You need to authorize your Github account. Authorize now?" },
+	"github_shared_success": { "message":"Succesfully shared! Pending approval. Open approval topic in new tab?" },
+	"github_shared_fail": { "message":"Failed to share, error returned was: \"$ERROR$\"", "placeholders": {"ERROR":{"content":"$1"}} }
 
 }

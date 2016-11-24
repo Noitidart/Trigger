@@ -207,11 +207,13 @@ function removeHotkey(filename) {
 }
 
 const EDIT_REPLACE_HOTKEY = 'EDIT_REPLACE_HOTKEY';
-function editHotkey(hotkey) {
+function editHotkey(hotkey, oldfilename) {
 	// this really is a fully replacement of the hotkey
+	// pass in oldfilename only if the filename changed so i can find the old entry
 	return {
 		type: EDIT_REPLACE_HOTKEY,
-		hotkey
+		hotkey,
+		oldfilename
 	}
 }
 
@@ -245,10 +247,11 @@ function hotkeys(state=hydrant.stg.pref_hotkeys, action) {
 			return newstate;
 		}
 		case EDIT_REPLACE_HOTKEY: {
-			let { hotkey } = action;
+			let { hotkey, oldfilename } = action;
 			let { filename } = hotkey.command;
 
-			let newstate = state.map(a_hotkey => a_hotkey.command.filename != filename ? a_hotkey : hotkey);
+			let findfilename = oldfilename || filename;
+			let newstate = state.map(a_hotkey => a_hotkey.command.filename != findfilename ? a_hotkey : hotkey);
 
 			callInBackground('storageCall', {aArea:'local',aAction:'set',aKeys:{
 				pref_hotkeys: newstate
@@ -449,216 +452,215 @@ const Hotkey = React.createClass({
 		let { hotkey } = this.props;
 		let { hotkey:{command:{filename}} } = this.props;
 		// loadPage('/edit/' + filename, { testing:genFilename() });
-		loadPage('/edit/' + filename, { testing:genFilename() });
+		loadPage('/edit/' + filename);
 	},
 	share: async function(e) {
 		// share command
 		if (!stopClickAndCheck0(e)) return;
 
 		let { hotkey } = this.props;
-		let { command:{filename, group, locales, code} } = pref_hotkey;
-
-		let state = store.getState();
+		let { command } = hotkey;
+		let { filename } = command;
 
 		// let oc = nub.oauth.github; // oauth_config
-		let mos = state.stg.mem_oauth.github; //mem_oauth_serviceid
+		let mos = store.getState().oauth.github; //mem_oauth_serviceid
 		if (!mos) {
-			if (confirm('You need to authorize your Github account. Authorize now?')) {
+			if (confirm(browser.i18n.getMessage('github_auth_needed')))
 				callInBackground('openAuthTab', { serviceid:'github' });
-			}
 			return;
 		}
 
-		let new_pref_hotkey = JSON.parse(JSON.stringify(pref_hotkey));
+		let hotkey_withnewcommand = JSON.parse(JSON.stringify(hotkey));
+		let newcommand = hotkey_withnewcommand.command;
 
-		// step 1 - delete repo
-		// `https://api.github.com/repos/${mos.dotname}/testapi`
-		// gives 204 when done. or 404 if it wasnt there meaning nothing to delete
-		await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
-
-		// step 2 - fork it - 202 after forked - even if already forked it gives 202
-		// https://api.github.com/repos/Noitidart/testapi/forks
-		let xpfork = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/forks', { method:'POST', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
-		console.log('xpfork:', xpfork);
-		if (xpfork.xhr.status !== 202)
-			throw 'Failed to do step "Pull Request Step 2 - Fork Repo"';
-
-		// step 2.1 - need to wait till fork completes - i do 1min - docs say it can take up to 5, if more then that they say contact support
-		// http://stackoverflow.com/a/33667417/1828637
-		// (new Date()).toISOString().replace(/\.\d+Z/,'Z')
-		// https://api.github.com/repos/noitdev/testapi/commits?since=2016-11-20T06:14:02Z
-		// if get 409 then not yet done. wait till get 200
-		await doRetries(10000, 6, async function() {
-			let data = queryStringDom({ since: (new Date()).toISOString().replace(/\.\d+Z/,'Z') });
-			let xpwait = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/commits?${data}`, { headers:{ Accept:'application/vnd.github.v3+json' } });
-			console.log('xpwait:', xpwait);
-			if (xpwait.xhr.status === 200) return 'fork ready';
-			else throw 'Failed to do step "Pull Request Step 2.1 - Wait Fork Finish"';
-		});
-
-		// step 3 - create/update file
-		let prtitle;
-
-		for (let goto=0; goto<1; goto++) {
-			if (filename.startsWith('_')) {
-			// if (pref_hotkey.file_sha) 'No changes made! actually it can be new one created' THAT's why i prefix with `_` instead of `if (!pref_hotkey.base_file_sha && !pref_hotkey.file_sha)` // NOTE:
-				// never shared yet
-				prtitle = prtitle || 'Add new command';
-
-				// step 3a.1
-				// check if filename exists - so getting avaialble filename as newfilename
-				// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
-				let newfilename = filename.substr(1);
-				while (true) {
-					let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}-code.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
-					console.log('xpexists:', xpexists);
-					if (xpexists.xhr.status === 404) break; // newfilename is not taken
-					newfilename = '' + genFilename();
-					await promiseTimeout(200);
-				}
-				new_pref_hotkey.filename = newfilename;
-
-				// step 3a.2 - create file
-				// create commit_message
-				let commit_message = {
-					type: 'new',
-					filename: newfilename,
-					date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
-					code:1,
-					group:1,
-					locale: {
-						a: Object.keys(pref_hotkey.command.content.locale)
-						// a: Object.keys(pref_hotkey.command.content.locale).filter( locale => (pref_hotkey.command.content.locale[locale].name || pref_hotkey.command.content.locale[locale].description) ) // remove if both name AND desc are blank // TODO: when i implement locales, this removal should be redundant, as if both are blank, i should not insert it into the `command.content.locale` object
-					}
-				};
-				console.log('commit_message:', commit_message);
-
-				let xpcreate = await xhrPromise({
-					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
-					method: 'PUT',
-					restype: 'json',
-					data: JSON.stringify({
-						message: btoa(JSON.stringify(commit_message)),
-						content: btoa(JSON.stringify(pref_hotkey.command.content))
-					}),
-					headers: {
-						Accept: 'application/vnd.github.v3+json',
-						Authorization: 'token ' + mos.access_token
-					}
-				});
-				console.log('xpcreate:', xpcreate);
-				if (xpcreate.xhr.status !== 201) {
-					throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
-				} else {
-					let { content:{sha:file_sha} } = xpcreate.xhr.response;
-					// delete new_pref_hotkey.command.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
-					// delete new_pref_hotkey.command.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
-					new_pref_hotkey.command.file_sha = file_sha;
-				}
-			} else {
-				// update file
-
-				if (!pref_hotkey.command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
-
-				prtitle = 'Update command ' + Object.keys(pref_hotkey.command.changes_since_base).sort().join(', ');
-
-				// step 3b.1 get sha of file
-				let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
-				console.log('xpsha:', xpsha);
-				if (xpsha.xhr.status === 404) {
-					// gives 404 if user created THEN shared THEN before i accept pull request user edited and shared another update
-					// not an issue if already initiall accepted pr, it will just come in as another update
-					// so repeat step 3 but as "brand new local going to"
-					prtitle = 'Add new command again - initial PR was not yet accepted';
-					filename = '_' + filename;
-					goto--; // goto = -1;
-					continue;
-				}
-				if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filename}" File SHA"';
-				let master_file_sha = xpsha.xhr.response.sha;
-				// let base_file_sha = pref_hotkey.command.base_file_sha;
-				let use_file_sha = master_file_sha; // TODO: this is experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
-
-				// step 3b.2 - update file
-				let commit_message = {
-					type: 'update',
-					filename,
-					date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
-					...pref_hotkey.command.changes_since_base
-				};
-				console.log('commit_message:', commit_message);
-
-				let xpupdate = await xhrPromise({
-					url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
-					method: 'PUT',
-					restype: 'json',
-					data: JSON.stringify({
-						message: btoa(JSON.stringify(commit_message)),
-						content: btoa(JSON.stringify(pref_hotkey.command.content)),
-						sha: use_file_sha
-					}),
-					headers: {
-						Accept: 'application/vnd.github.v3+json',
-						Authorization: 'token ' + mos.access_token
-					}
-				});
-				console.log('xpupdate:', xpupdate);
-				if (xpupdate.xhr.status !== 200) {
-					throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
-				} else {
-					let { content:{sha:file_sha} } = xpupdate.xhr.response;
-					delete new_pref_hotkey.command.base_file_sha;
-					delete new_pref_hotkey.command.changes_since_base;
-					new_pref_hotkey.command.file_sha = file_sha;
-				}
-			}
-		}
-
-		// step 4 - create pull request
-		// https://api.github.com/repos/Noitidart/testapi/pulls
-		let xppr = await xhrPromise({
-			url: 'https://api.github.com/repos/Noitidart/Trigger-Community/pulls',
-			method: 'POST',
-			restype: 'json',
-			data: JSON.stringify({
-				title: prtitle,
-				body: 'see title',
-				head: `${mos.login}:master`,
-				base: 'master'
-			}),
-			headers: {
-				Accept: 'application/vnd.github.v3+json',
-				Authorization: 'token ' + mos.access_token
-			}
-		});
-		console.log('xppr:', xppr);
-		if (xppr.xhr.status !== 201)
-			throw 'Failed to do step "Pull Request Step 4 - Create Request"';
-
-		let { html_url:prurl } = xppr.xhr.response;
-
-		// `https://api.github.com/repos/${mos.dotname}/testapi`
-		// gives 204 when done - if it errors here i dont care
 		try {
+			// step 1 - delete repo
+			// `https://api.github.com/repos/${mos.dotname}/testapi`
+			// gives 204 when done. or 404 if it wasnt there meaning nothing to delete
 			await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
-		} catch(ignore) {}
 
-		/////// ok pull request creation complete - update store and storage
-		// update store
-		let newstg = {
-			...state.stg,
-			pref_hotkeys: state.stg.pref_hotkeys.map(a_pref_hotkey => a_pref_hotkey.filename == filename ? new_pref_hotkey : a_pref_hotkey) // `filename` here is really `oldfilename`
-		};
-		store.dispatch(setMainKeys({
-			stg: newstg
-		}));
+			// step 2 - fork it - 202 after forked - even if already forked it gives 202
+			// https://api.github.com/repos/Noitidart/testapi/forks
+			let xpfork = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/forks', { method:'POST', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
+			console.log('xpfork:', xpfork);
+			if (xpfork.xhr.status !== 202)
+				throw 'Failed to do step "Pull Request Step 2 - Fork Repo"';
 
-		// update storage
-		let stgvals = { pref_hotkeys:newstg.pref_hotkeys };
-		await callInBackground('storageCall', { aArea:'local',aAction:'set',aKeys:stgvals });
+			// step 2.1 - need to wait till fork completes - i do 1min - docs say it can take up to 5, if more then that they say contact support
+			// http://stackoverflow.com/a/33667417/1828637
+			// (new Date()).toISOString().replace(/\.\d+Z/,'Z')
+			// https://api.github.com/repos/noitdev/testapi/commits?since=2016-11-20T06:14:02Z
+			// if get 409 then not yet done. wait till get 200
+			await doRetries(1000, 60, async function() {
+				let data = queryStringDom({ since: (new Date()).toISOString().replace(/\.\d+Z/,'Z') });
+				let xpwait = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/commits?${data}`, { headers:{ Accept:'application/vnd.github.v3+json' } });
+				console.log('xpwait:', xpwait);
+				if (xpwait.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 2.1 - Wait Fork Finish"';
+			});
 
-		if (confirm('Succesfully shared! Pending approval. Open approval topic in new tab?'))
-			callInBackground('addTab', prurl);
+			// step 3 - create/update file
+			let prtitle;
+
+			for (let goto=0; goto<1; goto++) {
+				if (filename.startsWith('_')) {
+				// if (pref_hotkey.file_sha) 'No changes made! actually it can be new one created' THAT's why i prefix with `_` instead of `if (!pref_hotkey.base_file_sha && !pref_hotkey.file_sha)` // NOTE:
+					// never shared yet
+					prtitle = prtitle || 'Add new command';
+
+					// step 3a.1
+					// check if filename exists - so getting avaialble filename as newfilename
+					// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
+					let newfilename = filename.substr(1);
+					while (true) {
+						let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
+						console.log('xpexists:', xpexists);
+						if (xpexists.xhr.status === 404) break; // newfilename is not taken
+						newfilename = genFilename();
+						await promiseTimeout(200);
+					}
+					newcommand.filename = newfilename;
+
+					// step 3a.2 - create file
+					// create commit_message
+					let commit_message = {
+						type: 'new',
+						filename: newfilename,
+						date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
+						code:1,
+						group:1,
+						locale: {
+							a: Object.keys(command.content.locales)
+							// a: Object.keys(pref_hotkey.command.content.locale).filter( locale => (command.content.locales[locale].name || command.content.locales[locale].description) ) // remove if both name AND desc are blank // TODO: when i implement locales, this removal should be redundant, as if both are blank, i should not insert it into the `command.content.locale` object
+						}
+					};
+					console.log('commit_message:', commit_message);
+
+					let xpcreate = await xhrPromise({
+						url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`,
+						method: 'PUT',
+						restype: 'json',
+						data: JSON.stringify({
+							message: btoa(JSON.stringify(commit_message)),
+							content: btoa(JSON.stringify(command.content))
+						}),
+						headers: {
+							Accept: 'application/vnd.github.v3+json',
+							Authorization: 'token ' + mos.access_token
+						}
+					});
+					console.log('xpcreate:', xpcreate);
+					if (xpcreate.xhr.status !== 201) {
+						throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
+					} else {
+						let file_sha = xpcreate.xhr.response.content.sha;
+						// delete newcommand.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
+						// delete newcommand.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
+						newcommand.file_sha = file_sha;
+					}
+				} else {
+					// update file
+
+					// if (!command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
+
+					prtitle = 'Update command ' + Object.keys(command.changes_since_base).sort().join(', ');
+
+					// step 3b.1 get sha of file - actually get contents so i can calculate changes
+					let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+					console.log('xpsha:', xpsha);
+					if (xpsha.xhr.status === 404) {
+						// gives 404 if user created THEN shared THEN before i accept pull request user edited and shared another update
+						// not an issue if already initiall accepted pr, it will just come in as another update
+						// so repeat step 3 but as "brand new local going to"
+						prtitle = 'Add new command again - initial PR was not yet accepted';
+						filename = '_' + filename;
+						goto--; // goto = -1;
+						continue;
+					}
+					if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filename}" File SHA and Compare Master Contents"';
+					let { sha:master_file_sha, content:master_content} = xpsha.xhr.response;
+					// let base_file_sha = command.base_file_sha;
+					let use_file_sha = master_file_sha; // TODO: can do experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
+					master_content = JSON.parse(atob(master_content));
+					console.log('master_content:', master_content);
+
+					let changes_since_master = calcCommandChanges(command.content, master_content);
+					if (!changes_since_master)
+						throw 'No changes between your command and the most recent command in the community'
+
+					// step 3b.2 - update file
+					let commit_message = {
+						type: 'update',
+						filename,
+						date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
+						...changes_since_master
+					};
+					console.log('commit_message:', commit_message);
+
+					let xpupdate = await xhrPromise({
+						url: `https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`,
+						method: 'PUT',
+						restype: 'json',
+						data: JSON.stringify({
+							message: btoa(JSON.stringify(commit_message)),
+							content: btoa(JSON.stringify(command.content)),
+							sha: use_file_sha
+						}),
+						headers: {
+							Accept: 'application/vnd.github.v3+json',
+							Authorization: 'token ' + mos.access_token
+						}
+					});
+					console.log('xpupdate:', xpupdate);
+					if (xpupdate.xhr.status !== 200) {
+						throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
+					} else {
+						let file_sha = xpupdate.xhr.response.content.sha;
+						delete newcommand.base_file_sha;
+						delete newcommand.changes_since_base;
+						newcommand.file_sha = file_sha;
+					}
+				}
+			}
+
+			// step 4 - create pull request
+			// https://api.github.com/repos/Noitidart/testapi/pulls
+			let xppr = await xhrPromise({
+				url: 'https://api.github.com/repos/Noitidart/Trigger-Community/pulls',
+				method: 'POST',
+				restype: 'json',
+				data: JSON.stringify({
+					title: prtitle,
+					body: 'see title',
+					head: `${mos.login}:master`,
+					base: 'master'
+				}),
+				headers: {
+					Accept: 'application/vnd.github.v3+json',
+					Authorization: 'token ' + mos.access_token
+				}
+			});
+			console.log('xppr:', xppr);
+			if (xppr.xhr.status !== 201)
+				throw 'Failed to do step "Pull Request Step 4 - Create Request"';
+
+			let { html_url:prurl } = xppr.xhr.response;
+
+			// `https://api.github.com/repos/${mos.dotname}/testapi`
+			// gives 204 when done - if it errors here i dont care
+			try {
+				await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
+			} catch(ignore) {}
+
+			/////// ok pull request creation complete - update store and storage
+			// the reducer will update storage
+			store.dispatch(editHotkey(hotkey_withnewcommand, command.filename));
+
+			if (confirm(browser.i18n.getMessage('github_shared_success')))
+				callInBackground('addTab', prurl);
+		} catch(ex) {
+			console['error'](browser.i18n.getMessage('github_shared_fail', [ex]));
+			alert(browser.i18n.getMessage('github_shared_fail', [ex]))
+		}
 	},
 	render() {
 		let { hotkey } = this.props;
@@ -1026,52 +1028,7 @@ const SaveCommandBtn = ReactRedux.connect(
 					newcommand.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
 					// delete newcommand.file_sha; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
 
-					// set `changes_since_base` on `newhotkey`
-					// what more changed since last (FIRST or SECOND+)?
-					let { changes_since_base={} } = command; // need default value, as if this is FIRST changes, then pref_hotkey didnt have `changes_since_base` prop
-					for (let change_type of ['group', 'locales', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes_since_base` and `field` is the keys in `content` of gitfile
-						if (JSON.stringify(newcontent[change_type]) != JSON.stringify(content[change_type])) {
-							changes_since_base[change_type] = 1;
-
-							if (change_type == 'locales') {
-								// figure out which locales changed
-								let newlocales = newcontent.locales;
-								let oldlocales = content.locales;
-
-								// which locales added
-								let a = [];
-								for (let nl in newlocales) {
-									// nl - newlocale
-									if (!(nl in oldlocales))
-									 	if (newlocales[nl].name || newlocales[nl].description) // make sure at least one is provided
-											a.push(nl);
-								}
-
-								// which locales removed
-								let r = [];
-								for (let ol in oldlocales) {
-									if (!(ol in newlocales))
-										r.push(ol);
-								}
-
-								// which locales updated
-								let u = [];
-								for (let ol in oldlocales) {
-									if (ol in newlocales) // make sure it is in newlocales (so not removed)
-										if (newlocales[ol].name != oldlocales[ol].name || newlocales[ol].description != oldlocales[ol].description) // NOTE: if one is updated to blank, then it is counted as update // TODO: ensure that form NEVER accepts if one or the other is blank this will resolve this issue
-											u.push(ol);
-								}
-
-								changes_since_base.locale = {
-									...(a.length ? {a} : {}),
-									...(r.length ? {r} : {}),
-									...(u.length ? {u} : {})
-								};
-							}
-						}
-					}
-					newcommand.changes_since_base = changes_since_base;
-
+					newcommand.changes_since_base = calcCommandChanges(newcontent, content);
 				}
 			}
 		}
@@ -1106,7 +1063,55 @@ const SaveCommandBtn = ReactRedux.connect(
 			' ' + browser.i18n.getMessage(iseditpage ? 'btn_savecommand' : 'btn_addcommand')
 		);
 	}
-}))
+}));
+
+function calcCommandChanges(newcontent, content) {
+	// returns null if no chnges
+	let changes = {};
+	for (let change_type of ['group', 'locales', 'code']) { // change_type is same as change_field - so i just use chagne_type. `type` is really what is seen in `changes` and `field` is the keys in `content` of gitfile
+		if (JSON.stringify(newcontent[change_type]) != JSON.stringify(content[change_type])) {
+			changes[change_type] = 1;
+
+			if (change_type == 'locales') {
+				// figure out which locales changed
+				let newlocales = newcontent.locales;
+				let oldlocales = content.locales;
+
+				// which locales added
+				let a = [];
+				for (let nl in newlocales) {
+					// nl - newlocale
+					if (!(nl in oldlocales))
+						if (newlocales[nl].name || newlocales[nl].description) // make sure at least one is provided
+							a.push(nl);
+				}
+
+				// which locales removed
+				let r = [];
+				for (let ol in oldlocales) {
+					if (!(ol in newlocales))
+						r.push(ol);
+				}
+
+				// which locales updated
+				let u = [];
+				for (let ol in oldlocales) {
+					if (ol in newlocales) // make sure it is in newlocales (so not removed)
+						if (newlocales[ol].name != oldlocales[ol].name || newlocales[ol].description != oldlocales[ol].description) // NOTE: if one is updated to blank, then it is counted as update // TODO: ensure that form NEVER accepts if one or the other is blank this will resolve this issue
+							u.push(ol);
+				}
+
+				changes.locales = {
+					...(a.length ? {a} : {}),
+					...(r.length ? {r} : {}),
+					...(u.length ? {u} : {})
+				};
+			}
+		}
+	}
+
+	return Object.keys(changes) ? changes : null;
+}
 const LocalePicker = ({ locale=gLocale, onChange }) =>
 	React.createElement('div', { className:'input-group-btn' },
 		React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1', onChange },
