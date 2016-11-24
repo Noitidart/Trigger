@@ -5,3 +5,4 @@
 * react-dom.min.js - https://cdnjs.cloudflare.com/ajax/libs/react/15.3.2/react-dom.min.js
 * react-redux.min.js - https://cdnjs.cloudflare.com/ajax/libs/react-redux/4.4.5/react-redux.min.js
 * redux.min.js - https://cdnjs.cloudflare.com/ajax/libs/redux/3.6.0/redux.min.js
+* strftime-min.js - https://github.com/samsonjs/strftime/tree/v0.9.2

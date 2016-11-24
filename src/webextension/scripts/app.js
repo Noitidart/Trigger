@@ -13,6 +13,17 @@ async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
 	document.title = browser.i18n.getMessage('addon_name');
 
+	strftime = strftime.localize({
+        days: browser.i18n.getMessage('days').split(' '),
+        shortDays: browser.i18n.getMessage('shortDays').split(' '),
+        months: browser.i18n.getMessage('months').split(' '),
+        shortMonths: browser.i18n.getMessage('shortMonths').split(' '),
+        AM: browser.i18n.getMessage('AM'),
+        PM: browser.i18n.getMessage('PM'),
+        am: browser.i18n.getMessage('am'),
+        pm: browser.i18n.getMessage('pm')
+    });
+
 	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
 	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', undefined, val=>resolve(val))) || 'en-US';
 	gLocale = 'en-US'; // for now, as i havent wrote up locales support
@@ -1208,7 +1219,7 @@ const PageCommunity = ReactRedux.connect(
 				let xp = await xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=getcount', { restype:'json' });
 				let { status, response } = xp.xhr;
 				if (status !== 200) throw xp;
-				({ installs } = response);
+				installs = response;
 			} catch(xperr) {
 				let { errtext='Unhandled server response when fetching install counts.', reason:xhrreason, xhr:{response, status}} = xperr;
 				throw {	errtext, xhrreason, response, status };
@@ -1226,39 +1237,54 @@ const PageCommunity = ReactRedux.connect(
 				throw {	errtext, xhrreason, response, status };
 			}
 			// clean out commits
-			commits = commits.reduce((acc, el) => {
-				let commit = {
-					commit_sha: el.sha,
-					name: el.committer.login, // name of author
-					date: new Date(el.commit.committer.date),
-					message: el.commit.message
+			let prnum;
+			let versions = commits.reduce((acc, el) => {
+				let { sha:commit_sha, committer:{login:author}, commit:{committer:{date},message:commit_message}} = el;
+				date = new Date(date);
+
+				let version = {
+					commit_sha, // needed to later get the content
+					author, // name of author
+					date,
+					commit_message
 				};
+
+				if (prnum) {
+					version.discussurl = 'https://github.com/Noitidart/Trigger-Community/pull/' + prnum;
+					prnum = null;
+				}
 
 				// to get the contents of the file at thsi point see - http://stackoverflow.com/a/16707165/1828637
 				// so i will not do this until the user clicks "Version"
 
 
-				if (commit.name == 'web-flow') return acc; // this is a PR merge, `el.commit.author.name` will be "Noitidart" discard // `el.commit.comitter.name` will be "Github"
+				let str = 'Merge pull request #';
+				let strix = commit_message.indexOf(str);
+				if (strix > -1) {
+					// is pr merge for the commit that come after
+					let spaceix = commit_message.indexOf(' ', str.length);
+					prnum = commit_message.substr(str.length, spaceix - str.length);
+					return acc;
+				}
+				if (author == 'web-flow') return acc; // this is a PR merge, `el.commit.author.name` will be "Noitidart" discard // `el.commit.comitter.name` will be "Github"
 
 				// cant do the ='s test as it is 0, 1, or 2 ='s per http://stackoverflow.com/a/8571544/1828637
-				// if (!commit.message.endsWith('=')) return acc; // is not a btoa string
+				// if (!version.commit_message.endsWith('=')) return acc; // is not a btoa string
 				try {
-					commit.message = JSON.parse(atob(commit.message));
+					commit_message = JSON.parse(atob(commit_message));
 				} catch(ex) {
 					console.error('ERROR: Trying to `JSON.parse` the `atob` of it caused error. commit.message:', commit.message);
 					return acc; // this is not a proper message, so it is not one of my files, discard it
 				}
 
-				acc.push(commit);
+				let filename = commit_message.filename;
+				if (!acc[filename]) acc[filename] = [];
+				acc[filename].push(version);
 
 				return acc;
-			}, []);
+			}, {});
 
-			console.log('commits:', commits);
-
-			// entry: { hotkey: HotkeyStruct, history,  } // history is contents entries with info
-
-			// get contents of each file in tree
+			// get contents of latest/master version each file in tree
 			let basket = new PromiseBasket; // for fetching content of each file
 
 			for (let {path, url, sha:file_sha} of tree) {
@@ -1281,8 +1307,8 @@ const PageCommunity = ReactRedux.connect(
 						}
 
 						let remotecommand = {
-							_installs: 0,
-							_versions: [],
+							_installs: installs[filename] || 0,
+							_versions: versions[filename],
 							filename,
 							file_sha,
 							content
@@ -1328,19 +1354,13 @@ const PageCommunity = ReactRedux.connect(
 					),
 					React.createElement('div', { className:'input-group pull-right' },
 						React.createElement('select', { className:'form-control', id:'sort', style:{borderRadius:'4px'}, disabled:!remotecommands },
-							React.createElement('option', { value:'alpha_asc' },
-								'Alphabetical'
-							),
-							React.createElement('option', { value:'alpha_asc' },
-								'Most Installed'
-							),
-							React.createElement('option', { value:'alpha_asc' },
-								'Recently Updated'
-							)
+							React.createElement('option', { value:'alpha' }, browser.i18n.getMessage('sort_alpha') ),
+							React.createElement('option', { value:'installs' }, browser.i18n.getMessage('sort_installs') ),
+							React.createElement('option', { value:'updated' }, browser.i18n.getMessage('sort_updated') )
 						)
 					),
 					React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
-						React.createElement('input', { className:'form-control', placeholder:'Search', id:'search', type:'text', disabled:!remotecommands }),
+						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', disabled:!remotecommands }),
 						issearched && React.createElement('div', { className:'input-group-btn' },
 							React.createElement('a', { href:'#', className:'btn btn-default btn-danger' },
 								React.createElement('i', { className:'glyphicon glyphicon-remove' })
@@ -1420,7 +1440,9 @@ const RemoteCommand = ReactRedux.connect(
 	displayName: 'RemoteCommand',
 	render() {
 		let { remotecommand } = this.props;
-		let { filename, file_sha, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = remotecommand;
+		let { _installs:installs, _versions:versions, filename, file_sha, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = remotecommand;
+		let date = versions[0].date
+		let version = versions.length + 1;
 
 		// figure out if it is installed, and if it is lower version, or higher version, or custom based on lower version, or custom based on this version
 		let has_pref_hotkey = false; // pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
@@ -1437,18 +1459,18 @@ const RemoteCommand = ReactRedux.connect(
 				React.createElement('h3', undefined,
 					name, ' ',
 					React.createElement('small', undefined,
-						browser.i18n.getMessage('addon_version_long', '2')
+						browser.i18n.getMessage('addon_version_long', version)
 					)
 				),
 				React.createElement('p', { className:'text-muted pull-right' },
 					React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
 						React.createElement('span', { className:'glyphicon glyphicon-cloud-download' }),
-						' ', '141'
+						' ' + installs
 					),
 					' ',
 					React.createElement('span', { title:browser.i18n.getMessage('last_updated'), style:{margin:'0 7px'} },
 						React.createElement('span', { className:'glyphicon glyphicon-calendar' }),
-						' ', 'July 24, 2016'
+						' ' + strftime(browser.i18n.getMessage('strftime_format_date1'), date)
 					)
 				),
 				React.createElement('p', undefined,
