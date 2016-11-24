@@ -802,10 +802,12 @@ const OauthManagerRow = ({serviceid, config, auth, doForget, doAuth}) => {
 // start - PageCommandForm
 const PageCommandForm = ReactRedux.connect(
 	function(state, ownProps) {
+		let { location:{pathname}, params:{filename} } = ownProps; // router
+		let { hotkeys } = state; // state
 		return {
 			// NOTE: never feed in fully pagestate, like line below, just select the stuff from pagestate that this component needs
 			// pagestate: state.pages_state[ownProps.location.pathname],
-			...(ownProps.location.pathname.startsWith('/edit/') ? {hotkey:state.hotkeys.find(({filename})=>ownProps.params.filename)} : {}) // hotkey
+			...(pathname.startsWith('/edit/') ? {hotkey:hotkeys.find(({command:{filename:a_filename}})=>a_filename == filename)} : {}) // hotkey
 		}
 	}
 	// function(dispatch, ownProps) {
