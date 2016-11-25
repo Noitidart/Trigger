@@ -6,3 +6,4 @@
 * react-redux.min.js - https://cdnjs.cloudflare.com/ajax/libs/react-redux/4.4.5/react-redux.min.js
 * redux.min.js - https://cdnjs.cloudflare.com/ajax/libs/redux/3.6.0/redux.min.js
 * strftime-min.js - https://github.com/samsonjs/strftime/tree/v0.9.2
+* jsdiff.js - http://ejohn.org/files/jsdiff.js & http://ejohn.org/projects/javascript-diff-algorithm/
