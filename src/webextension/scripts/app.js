@@ -577,7 +577,7 @@ const Hotkey = React.createClass({
 					// if (!command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
 
 					// step 3b.1 get sha of file - actually get contents so i can calculate changes
-					let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+					let xpsha = await xhrPromise(`https://api.github.com/repos/Noitidar/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
 					console.log('xpsha:', xpsha);
 					if (xpsha.xhr.status === 404) {
 						// gives 404 if user created THEN shared THEN before i accept pull request user edited and shared another update
@@ -1216,18 +1216,6 @@ const PageCommunity = ReactRedux.connect(
 
 		let remotecommands = [];
 		try {
-			// get file tree
-			let tree;
-			try {
-				let xp = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/git/trees/master', { restype:'json' });
-				let { status, response } = xp.xhr;
-				if (status !== 200) throw xp;
-				({ tree } = response);
-			} catch(xperr) {
-				let { errtext='Unhandled server response when fetching command tree.', reason:xhrreason, xhr:{response, status}} = xperr;
-				throw {	errtext, xhrreason, response, status };
-			}
-
 			// get install counts
 			let installs;
 			try {
@@ -1303,20 +1291,18 @@ const PageCommunity = ReactRedux.connect(
 			// get contents of latest/master version each file in tree
 			let basket = new PromiseBasket; // for fetching content of each file
 
-			for (let {path, url, sha:file_sha} of tree) {
-				if (!path.endsWith('.json')) continue;
-				let filename = path.substr(0, path.indexOf('.json'));
-				if (filename.length != 8) continue; // i made the change to 8 char filename when started commit message of btoa
-
+			for (let filename in versions) {
 				basket.add(
 					(async function() {
 
 						let content;
+						let file_sha;
 						try {
-							let xp = await xhrPromise(url, { restype:'json', headers:{Accept:'application/vnd.github.v3+json'} });
+							let xp = await xhrPromise(`https://api.github.com/repos/Noitidart/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
 							let { status, response } = xp.xhr;
 							if (status !== 200) throw xp;
-							content = JSON.parse(atob(response.content));
+							({ sha:file_sha, content} = xp.xhr.response);
+							content = JSON.parse(atob(content));
 						} catch(xperr) {
 							let { errtext='Unhandled server response when fetching command content for file:' + filename, reason:xhrreason, xhr:{response, status}} = xperr;
 							throw {	errtext, xhrreason, response, status };
@@ -1638,7 +1624,7 @@ const InstallBtn = ReactRedux.connect(
 		let installtype_styles = {
 			0: { color:'success', label:browser.i18n.getMessage('install') },
 			1: { disabled:true, color:'success', label: browser.i18n.getMessage('installed') },
-			2: { color:'success', label: browser.i18n.getMessage('upgrade') },
+			2: { color:'primary', label: browser.i18n.getMessage('upgrade') },
 			3: { color:'warning', label: browser.i18n.getMessage('discard_upgrade') },
 			4: { color:'danger', label: browser.i18n.getMessage('discard_downgrade') }
 		}
