@@ -5,7 +5,7 @@
  */
 
 body {
-
+	overflow-y: scroll;
 }
 
 .hero-spacer {

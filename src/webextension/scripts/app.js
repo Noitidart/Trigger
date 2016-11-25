@@ -535,7 +535,7 @@ const Hotkey = React.createClass({
 					let commit_message = {
 						type: 'new',
 						filename: newfilename,
-						date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
+						// date: (await getUnixTime()) / 1000,
 						code:1,
 						group:1,
 						locale: {
@@ -601,7 +601,7 @@ const Hotkey = React.createClass({
 					let commit_message = {
 						type: 'update',
 						filename,
-						date: Math.floor((await getUnixTime()) / 1000 / 60 / 60 / 24),
+						// date: (await getUnixTime()) / 1000,
 						...changes_since_master
 					};
 					console.log('commit_message:', commit_message);
@@ -1187,7 +1187,9 @@ const PageCommunity = ReactRedux.connect(
 
 		return {
 			remotecommands: pagestate.remotecommands,
-			filterterm: pagestate.filterterm
+			filterterm: pagestate.filterterm,
+			filtercat: pagestate.filtercat,
+			sort: pagestate.sort
 		}
 	}
 )(React.createClass({
@@ -1195,6 +1197,7 @@ const PageCommunity = ReactRedux.connect(
 	goBack: e => stopClickAndCheck0(e) ? loadOldPage('/add') : null,
 	loadRemoteCommands: async function() {
 		let { location:{pathname} } = this.props; // router
+		let { sort } = this.props; // mapped state
 
 		// start spinner if it hasnt already
 		store.dispatch(modPageState(pathname, { remotecommands:undefined, remotecommands_error:undefined })); // when clicking "Try Again" this will cause spinner to show, and error to hide // if this is first run, on first render, then it `modPageState` will see that there is no change as `remotecommands_error` is not there it is already `undefined`
@@ -1272,6 +1275,7 @@ const PageCommunity = ReactRedux.connect(
 				// if (!version.commit_message.endsWith('=')) return acc; // is not a btoa string
 				try {
 					commit_message = JSON.parse(atob(commit_message));
+					version.commit_message = commit_message;
 				} catch(ex) {
 					console.error('ERROR: Trying to `JSON.parse` the `atob` of it caused error. commit.message:', commit.message);
 					return acc; // this is not a proper message, so it is not one of my files, discard it
@@ -1334,15 +1338,61 @@ const PageCommunity = ReactRedux.connect(
 			return;
 		}
 
+		this.sortRemoteCommands(remotecommands, sort);
+
 		store.dispatch(modPageState(pathname, { remotecommands }));
 	},
+	sortRemoteCommands(remotecommands, sort='alpha') {
+		let sortalgo = {
+			alpha: (a, b) => compareIntThenLex(a.content.locales[gLocale].name, b.content.locales[gLocale].name), // asc
+			installs: (a, b) => b._installs - a._installs, // desc
+			updated: (a, b) => b._versions[0].date - a._versions[0].date // desc
+		};
+		console.log('pre sort:', remotecommands.map(el=>el.content.locales[gLocale].name));
+		setTimeout(()=>console.log('post sort:', remotecommands.map(el=>el.content.locales[gLocale].name)));
+		return remotecommands.sort(sortalgo[sort]);
+	},
+	changeSort() {
+		let { remotecommands:oldremotecommands, sort:oldsort='alpha' } = this.props; // mapped state
+		let { dispatch } = this.props; // redux
+		let { location:{pathname} } = this.props; // router
+
+		let { sort } = getFormValues(['sort']);
+
+		if (sort != oldsort) { // i do the test rather then letting modPageState test, because default in pagestate is undefined, but here i use "alpha", so  for me `"alpha" === undefined`
+			let remotecommands = this.sortRemoteCommands([...oldremotecommands], sort);
+			dispatch(modPageState(pathname, {sort, remotecommands}));
+		}
+	},
+	setFilterCategory(filtercat, e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		// let { filtercat:oldfiltercat } = this.props; // mapped state
+		let { dispatch } = this.props; // redux
+		let { location:{pathname} } = this.props; // router
+
+		dispatch(modPageState(pathname, {filtercat})); // will do nothing if filtercat === oldfiltercat
+	},
+	termFilterer(remotecommand, filterterm) {
+		return true;
+	},
+	catFilterer(remotecommand, filtercat) {
+		return filtercat === undefined || remotecommand.content.group === filtercat;
+	},
 	render() {
-		let { remotecommands_error, remotecommands, searchterm } = this.props; // mapped state
+		let { remotecommands_error, remotecommands, filterterm, filtercat, sort='alpha' } = this.props; // mapped state
 
 		if (!remotecommands && !remotecommands_error) // first render i think - i hope
 			setTimeout(this.loadRemoteCommands)
 
-		let issearched = remotecommands && searchterm;
+		let istermfiltered = remotecommands && filterterm;
+		let iscatfiltered = remotecommands && filtercat;
+
+		let termfiltered = !istermfiltered ? remotecommands : remotecommands.filter(remotecommand => this.termFilterer(remotecommand, filterterm));
+
+		// filter by both `filterterm` and `filtercat`
+		let bothfiltered = remotecommands && remotecommands.filter(remotecommand => this.termFilterer(remotecommand, filterterm) && this.catFilterer(remotecommand, filtercat));
+
 
 		return React.createElement('span', undefined,
 			// controls
@@ -1353,7 +1403,7 @@ const PageCommunity = ReactRedux.connect(
 						' ' + browser.i18n.getMessage('back')
 					),
 					React.createElement('div', { className:'input-group pull-right' },
-						React.createElement('select', { className:'form-control', id:'sort', style:{borderRadius:'4px'}, disabled:!remotecommands },
+						React.createElement('select', { className:'form-control', id:'sort', style:{borderRadius:'4px'}, disabled:!remotecommands, defaultValue:sort, onChange:this.changeSort },
 							React.createElement('option', { value:'alpha' }, browser.i18n.getMessage('sort_alpha') ),
 							React.createElement('option', { value:'installs' }, browser.i18n.getMessage('sort_installs') ),
 							React.createElement('option', { value:'updated' }, browser.i18n.getMessage('sort_updated') )
@@ -1361,7 +1411,7 @@ const PageCommunity = ReactRedux.connect(
 					),
 					React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
 						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', disabled:!remotecommands }),
-						issearched && React.createElement('div', { className:'input-group-btn' },
+						istermfiltered && React.createElement('div', { className:'input-group-btn' },
 							React.createElement('a', { href:'#', className:'btn btn-default btn-danger' },
 								React.createElement('i', { className:'glyphicon glyphicon-remove' })
 							)
@@ -1386,23 +1436,19 @@ const PageCommunity = ReactRedux.connect(
 					// categories filter
 					React.createElement('div', { className:'col-md-3' },
 						React.createElement('div', { className:'list-group' },
-							React.createElement('h4', undefined,
-								'Categories'
-							),
-							[{id:-1, text:browser.i18n.getMessage('all')}, ...GROUPS].map(({id, text}) =>
-								React.createElement('a', { className:'list-group-item', href:'#', style:(id !== -1 ? undefined : {backgroundColor:'#f0f0f0'}) }, // if active, give it style `#f0f0f0` (which is the hover background-color) rather then `active`. active is too dark.
-									React.createElement('span', { className:'badge' },
-										remotecommands.reduce((sum, remotecommand)=>(id === remotecommand.content.group || id === -1) ? sum+1 : sum, 0)
-									),
-									' ',
-									text
+							React.createElement('h4', undefined, browser.i18n.getMessage('categories')),
+							[{id:undefined, text:browser.i18n.getMessage('all')}, ...GROUPS].map(({id, text}) =>
+								React.createElement('a', { className:'list-group-item', href:'#', style:(id !== filtercat ? undefined : {backgroundColor:'#f0f0f0'}), onClick:this.setFilterCategory.bind(null, id)}, // if active, give it style `#f0f0f0` (which is the hover background-color) rather then `active`. active is too dark.
+									React.createElement('span', { className:'badge' }, termfiltered.reduce((sum, remotecommand)=>(id === remotecommand.content.group || id === undefined) ? sum+1 : sum, 0)),
+									' ' + text
 								)
 							)
 						)
 					),
-					// hotkey results
+					// command results
 					React.createElement('div', { className:'col-md-9' },
-						pushAlternatingRepeating(remotecommands.map(remotecommand => React.createElement(RemoteCommand, { remotecommand, key:remotecommand.filename })), React.createElement('hr'))
+						!!bothfiltered.length && pushAlternatingRepeating(bothfiltered.map(remotecommand => React.createElement(RemoteCommand, { remotecommand, key:remotecommand.filename })), React.createElement('hr')),
+						!bothfiltered.length && React.createElement('h2', {style:{textAlign:'center'}}, browser.i18n.getMessage('noresults'))
 					)
 				)
 			),
@@ -1817,7 +1863,7 @@ class PromiseBasket {
 	}
 }
 
-async function getUnixTime(opt) {
+async function getUnixTime(opt={}) {
 	// retry_cnt is used for times to retry each each server
 	opt = {
 		timeout: 10000,
@@ -1907,5 +1953,26 @@ function getFormValues(domids) {
 		domvalues[domid] = domvalue;
 	}
 	return domvalues;
+}
+
+function compareIntThenLex(a, b) {
+    // sort ascending by integer, and then lexically
+	// ['1', '10', '2'] ->
+	// ['1', '2', '10']
+
+    let inta = parseInt(a);
+    let intb = parseInt(b);
+    let isaint = !isNaN(inta);
+    let isbint = !isNaN(intb);
+    if (isaint && isbint) {
+        return inta - intb; // sort asc
+    } else if (isaint && !isbint) {
+        return -1; // sort a to lower index then b
+    } else if (!isaint && isbint) {
+        return 1; // sort b to lower index then a
+    } else {
+        // neither are int's
+        return a.localeCompare(b)
+    }
 }
 // end - cmn
