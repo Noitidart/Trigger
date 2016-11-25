@@ -1364,17 +1364,40 @@ const PageCommunity = ReactRedux.connect(
 			dispatch(modPageState(pathname, {sort, remotecommands}));
 		}
 	},
+	changeFilterTerm(e) {
+		let filterterm = e.target.value.toLowerCase();
+		let { dispatch } = this.props; // redux
+		let { location:{pathname} } = this.props; // router
+
+		dispatch(modPageState(pathname, {filterterm})); // will do nothing if filtercat === oldfiltercat
+	},
+	clickClearFilterTerm(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		document.getElementById('search').value = '';
+
+		let { dispatch } = this.props; // redux
+		let { location:{pathname} } = this.props; // router
+
+		dispatch(modPageState(pathname, {filterterm:undefined}));
+	},
 	setFilterCategory(filtercat, e) {
 		if (!stopClickAndCheck0(e)) return;
 
-		// let { filtercat:oldfiltercat } = this.props; // mapped state
 		let { dispatch } = this.props; // redux
 		let { location:{pathname} } = this.props; // router
 
 		dispatch(modPageState(pathname, {filtercat})); // will do nothing if filtercat === oldfiltercat
 	},
 	termFilterer(remotecommand, filterterm) {
-		return true;
+		if (filterterm === undefined) return true;
+		let { locales, code:{exec:code} } = remotecommand.content;
+		// if (code.toLowerCase().includes(filterterm)) return true;
+		for (let [locale, {name, description}] of Object.entries(remotecommand.content.locales)) {
+			if (name.toLowerCase().includes(filterterm)) return true;
+			if (description.toLowerCase().includes(filterterm)) return true;
+		}
+		return false;
 	},
 	catFilterer(remotecommand, filtercat) {
 		return filtercat === undefined || remotecommand.content.group === filtercat;
@@ -1410,9 +1433,9 @@ const PageCommunity = ReactRedux.connect(
 						)
 					),
 					React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
-						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', disabled:!remotecommands }),
+						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', onChange:this.changeFilterTerm, disabled:!remotecommands }),
 						istermfiltered && React.createElement('div', { className:'input-group-btn' },
-							React.createElement('a', { href:'#', className:'btn btn-default btn-danger' },
+							React.createElement('a', { href:'#', className:'btn btn-default btn-danger', onClick:this.clickClearFilterTerm },
 								React.createElement('i', { className:'glyphicon glyphicon-remove' })
 							)
 						)
