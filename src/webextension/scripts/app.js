@@ -327,6 +327,8 @@ let app = Redux.combineReducers({
 	filename: '', // generated based on filename's available on server // just a random hash // if not yet verified with server (meaning not yet shared) this is prefexed with `_`
 	file_sha, // not there if edited & unshared edits
 	base_file_sha, // only there if edited & unshared edits
+	share_unix, // moving to share_unix instead of file_sha because file_sha does not help me with anything. my original hope was that file_sha would help me get the version number, but fetching versions from github gives me commit_sha. i would have to do another xhr on each commit_sha to get the file_sha.
+	base_share_unix,
 	changes_since_base: {'group':1, 'locale':{a:[],r:[],u:[]}, 'code':1} // only there if has base_file_sha and edited & unshared edits // if no base_file_sha then this is all new stuff
 	content: {
 		group:
@@ -535,7 +537,7 @@ const Hotkey = React.createClass({
 					let commit_message = {
 						type: 'new',
 						filename: newfilename,
-						// date: (await getUnixTime()) / 1000,
+						unix: await getUnixTime(),
 						code:1,
 						group:1,
 						locale: {
@@ -564,15 +566,15 @@ const Hotkey = React.createClass({
 					} else {
 						let file_sha = xpcreate.xhr.response.content.sha;
 						// delete newcommand.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
+						// delete newcommand.base_share_unix; // doesnt have base_commit_sha as this is "never shared yet"
 						// delete newcommand.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
 						newcommand.file_sha = file_sha;
+						newcommand.share_unix = commit_message.unix;
 					}
 				} else {
 					// update file
 
 					// if (!command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
-
-					prtitle = 'Update command ' + Object.keys(command.changes_since_base).sort().join(', ');
 
 					// step 3b.1 get sha of file - actually get contents so i can calculate changes
 					let xpsha = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
@@ -597,11 +599,13 @@ const Hotkey = React.createClass({
 					if (!changes_since_master)
 						throw 'No changes between your command and the most recent command in the community'
 
+					prtitle = 'Update command ' + Object.keys(changes_since_master).sort().join(', ');
+
 					// step 3b.2 - update file
 					let commit_message = {
 						type: 'update',
 						filename,
-						// date: (await getUnixTime()) / 1000,
+						unix: await getUnixTime(),
 						...changes_since_master
 					};
 					console.log('commit_message:', commit_message);
@@ -626,8 +630,10 @@ const Hotkey = React.createClass({
 					} else {
 						let file_sha = xpupdate.xhr.response.content.sha;
 						delete newcommand.base_file_sha;
-						delete newcommand.changes_since_base;
+						delete newcommand.base_share_unix;
+						// delete newcommand.changes_since_base;
 						newcommand.file_sha = file_sha;
+						newcommand.share_unix = commit_message.unix;
 					}
 				}
 			}
@@ -676,8 +682,8 @@ const Hotkey = React.createClass({
 		let { hotkey } = this.props;
 
 		let { enabled, combo, command } = hotkey;
-		let { file_sha, filename, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
-		// file_sha, filename, group, name, description, code
+		let { share_unix, filename, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
+		// share_unix, filename, group, name, description, code
 
 		let combotxt;
 		let hashotkey = true;
@@ -688,8 +694,9 @@ const Hotkey = React.createClass({
 
 		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
 		// cant use `locale.file_sha` and `code.file_sha` to determine `islocal`, as it might be edited and not yet shared
+		// it also CAN be shared but not yet PR merged
 
-		let isshared = (!islocal && file_sha);
+		let isshared = (!islocal && share_unix); // if has share_unix, it doesnt have base_share_unix. base_share_unix would indicate that a remotecommand was locally edited
 
 		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
 
@@ -1006,6 +1013,8 @@ const SaveCommandBtn = ReactRedux.connect(
 			// changes_since_base // added below if it is edit of isgitfile (!islocal)
 			// base_file_sha // added below if it is edit of isgitfile (!islocal)
 			// file_sha
+			// base_share_unix
+			// file_unix
 			filename,
 			content: {
 				group: domvalues.group,
@@ -1035,13 +1044,16 @@ const SaveCommandBtn = ReactRedux.connect(
 					let { content:newcontent } = newcommand;
 					let { content } = command;
 
-					// set `base_file_sha`
-					let { file_sha, base_file_sha } = command;
-					if (!file_sha && !base_file_sha) throw 'how is this isgitfile (not islocal) and doesnt have a file_sha??';
+					// set `base_file_sha` ajnd `base_share_unix`
+					let { file_sha, base_file_sha, share_unix, base_share_unix } = command;
+					if (!file_sha && !base_file_sha) throw 'how is this isgitfile (not islocal) and doesnt have a file_sha or base_file_sha??';
+					if (!share_unix && !base_share_unix) throw 'how is this isgitfile (not islocal) and doesnt have a share_unix or base_share_unix??';
 					newcommand.base_file_sha = file_sha || base_file_sha; // need the || as this may be FIRST changes, or SECOND+ changes
+					newcommand.base_share_unix = share_unix || base_share_unix; // need the || as this may be FIRST changes, or SECOND+ changes
 					// delete newcommand.file_sha; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_sha is now defunkt for sure. it instead goes to newhotkey.command.base_file_sha
+					// delete newcommand.share_unix; // i never copied this from `pref_hotkey.command` so no need to delete. i dont copy it because the pref_hotkey.file_unix is now defunkt for sure. it instead goes to newhotkey.command.base_share_unix
 
-					newcommand.changes_since_base = calcCommandChanges(newcontent, content); // i dont use this anymore, just leaving in case it affects something TODO: clean this up
+					// newcommand.changes_since_base = calcCommandChanges(newcontent, content); // no longer using
 				}
 			}
 		}
@@ -1315,6 +1327,7 @@ const PageCommunity = ReactRedux.connect(
 							_versions: versions[filename],
 							filename,
 							file_sha,
+							share_unix: versions[filename][0].unix,
 							content
 						};
 
@@ -1519,9 +1532,9 @@ const RemoteCommand = ReactRedux.connect(
 	displayName: 'RemoteCommand',
 	render() {
 		let { remotecommand } = this.props;
-		let { _installs:installs, _versions:versions, filename, file_sha, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = remotecommand;
-		let date = versions[0].date
-		let version = versions.length + 1;
+		let { _installs:installs, _versions:versions, filename, content:{locales:{[gLocale]:{name, description}}} } = remotecommand;
+		let version = versions.length;
+		let { date } = versions[0];
 
 		// figure out if it is installed, and if it is lower version, or higher version, or custom based on lower version, or custom based on this version
 		let has_pref_hotkey = false; // pref_hotkeys.find(a_pref_hotkey => a_pref_hotkey.filename == filename);
@@ -1542,7 +1555,7 @@ const RemoteCommand = ReactRedux.connect(
 					)
 				),
 				React.createElement('p', { className:'text-muted pull-right' },
-					React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
+					React.createElement('span', { title:browser.i18n.getMessage('unique_installs'), style:{margin:'0 7px'} },
 						React.createElement('span', { className:'glyphicon glyphicon-cloud-download' }),
 						' ' + installs
 					),
@@ -1553,10 +1566,7 @@ const RemoteCommand = ReactRedux.connect(
 					)
 				),
 				React.createElement('p', undefined,
-					React.createElement('a', { href:'#', className:'btn btn-default btn-success', disabled:isinstalled },
-						React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
-						' ', (isinstalled ? browser.i18n.getMessage('installed') : browser.i18n.getMessage('install'))
-					),
+					React.createElement(InstallBtn, { remotecommand }),
 					' ',
 					React.createElement('a', { href:'#', className:'btn btn-default' },
 						React.createElement('span', { className:'glyphicon glyphicon-dashboard' }),
@@ -1572,7 +1582,74 @@ const RemoteCommand = ReactRedux.connect(
 			)
 		);
 	}
-}))
+}));
+const InstallBtn = ReactRedux.connect(
+	function(state, ownProps) {
+		return {
+			hotkeys: state.hotkeys
+		}
+	}
+)(React.createClass({
+	displayName: 'InstallBtn',
+	onClick(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+
+	},
+	getInstalledType() {
+		// returns
+			// 0 - not installed
+			// 1 - installed and installed version is master version, disabled
+			// 2 - installed and installed version is less then master, safe upgrade
+			// 3 - installed and edited, warn upgrade - tell user if their edits are enhancements not seen in the latest master version, then we would appreciate it if they shared it, if their edits are not as good then they will probably want to upgrade
+			// 4 - installed master version and edited, danger downgrade - tell user to share if its better, or if they dont like their edits they can downgrade
+
+		let { remotecommand:{filename, _versions:versions} } = this.props;
+		let { hotkeys } = this.props; // mapped state
+
+		// the hotkey the command is installed in
+		let hotkey = hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+
+		if (!hotkey) return 0; // not installed
+
+		let command = hotkey.command; // the installed command
+		let isedited = 'base_share_unix' in command;
+		let version = versions.length - versions.findIndex(a_version => a_version.commit_message.unix === (command.share_unix || command.base_share_unix));
+
+		let masterversion = versions.length;
+
+		if (version === masterversion) {
+			if (isedited) {
+				return 4;
+			} else {
+				return 1;
+			}
+		} else if (version < masterversion) {
+			if (isedited) {
+				return 3;
+			} else {
+				return 2;
+			}
+		}
+	},
+	render() {
+
+		// props for the button
+		let installtype_styles = {
+			0: { color:'success', label:browser.i18n.getMessage('install') },
+			1: { disabled:true, color:'success', label: browser.i18n.getMessage('installed') },
+			2: { color:'success', label: browser.i18n.getMessage('upgrade') },
+			3: { color:'warning', label: browser.i18n.getMessage('discard_upgrade') },
+			4: { color:'danger', label: browser.i18n.getMessage('discard_downgrade') }
+		}
+		let { label, disabled, color } = installtype_styles[this.getInstalledType()];
+
+		return React.createElement('a', { href:'#', className:'btn btn-default btn-' + color, disabled },
+			React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
+			' ' + label
+		);
+	}
+}));
 // end - PageCommunity
 const PageInvalid = React.createClass({
 	displayName: 'PageInvalid',

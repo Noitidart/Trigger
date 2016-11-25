@@ -37,8 +37,11 @@
 
 	"install": { "message": "Install" },
 	"installed": { "message": "Installed" },
+	"upgrade": { "message": "Upgrade" },
+	"discard_upgrade": { "message": "Discard & Upgrade" },
+	"discard_downgrade": { "message": "Discard & Downgrade" },
 	"last_updated": { "message": "Last Updated" },
-	"installs": { "message": "Installs" },
+	"unique_installs": { "message": "Unique Installs" },
 	"versions": { "message": "Versions" },
 
 	"placeholder_communitysearch": { "message": "Search" },
