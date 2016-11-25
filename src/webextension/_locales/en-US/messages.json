@@ -41,8 +41,11 @@
 	"discard_upgrade": { "message": "Discard & Upgrade" },
 	"discard_downgrade": { "message": "Discard & Downgrade" },
 	"last_updated": { "message": "Last Updated" },
-	"unique_installs": { "message": "Unique Installs" },
+	"installs": { "message": "Installs" },
 	"versions": { "message": "Versions" },
+	"confirm_discard_upgrade_warning": { "message":"You currently have a custom version installed. However the version you based your edits on, is older then the latest public version. Please compare your edits to the most recent one by clicking \"Cancel\" then seeing the differences in the \"Versions\" section. If you feel your edits are an enhancement on this, please share them with the community. If you think the latest public version is better, then go ahead and click \"OK\" to discard those edits and upgrade." },
+	"confirm_discard_downgrade_warning": { "message":"You currently have a custom version installed. Your version is based on the latest public version. Please compare your edits to this by clicking \"Cancel\" then seeing the differences in the \"Versions\" section. If you feel your edits are an enhancement on this, please share them with the community. If you think the latest public version is better, then go ahead and click \"OK\" to discard those edits and downgrade." },
+	"message_installed": { "message":"Succesfully installed. You can now go to your \"My Hotkeys\" page and assign it a hotkey." },
 
 	"placeholder_communitysearch": { "message": "Search" },
 	"sort_alpha": { "message": "Alphabetical" },

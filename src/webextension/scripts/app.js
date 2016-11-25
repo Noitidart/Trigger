@@ -713,7 +713,7 @@ const Hotkey = React.createClass({
 						name
 					),
 					React.createElement('p', undefined,
-						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'warning' : 'default'), 'data-tooltip':browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey') },
+						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'primary' : 'default'), 'data-tooltip':browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey') },
 							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
 						),
 						' ',
@@ -1313,7 +1313,7 @@ const PageCommunity = ReactRedux.connect(
 							_versions: versions[filename],
 							filename,
 							file_sha,
-							share_unix: versions[filename][0].unix,
+							share_unix: versions[filename][0].commit_message.unix,
 							content
 						};
 
@@ -1442,7 +1442,7 @@ const PageCommunity = ReactRedux.connect(
 						)
 					),
 					React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
-						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', onChange:this.changeFilterTerm, disabled:!remotecommands, onKeyDown:this.keydnFilterTerm }),
+						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', onChange:this.changeFilterTerm, disabled:!remotecommands, defaultValue:filterterm, onKeyDown:this.keydnFilterTerm }),
 						istermfiltered && React.createElement('div', { className:'input-group-btn' },
 							React.createElement('a', { href:'#', className:'btn btn-default btn-danger', onClick:this.clickClearFilterTerm },
 								React.createElement('i', { className:'glyphicon glyphicon-remove' })
@@ -1541,7 +1541,7 @@ const RemoteCommand = ReactRedux.connect(
 					)
 				),
 				React.createElement('p', { className:'text-muted pull-right' },
-					React.createElement('span', { title:browser.i18n.getMessage('unique_installs'), style:{margin:'0 7px'} },
+					React.createElement('span', { title:browser.i18n.getMessage('installs'), style:{margin:'0 7px'} },
 						React.createElement('span', { className:'glyphicon glyphicon-cloud-download' }),
 						' ' + installs
 					),
@@ -1580,9 +1580,42 @@ const InstallBtn = ReactRedux.connect(
 	onClick(e) {
 		if (!stopClickAndCheck0(e)) return;
 
+		let installtype = this.getInstallType();
 
+		let { remotecommand } = this.props;
+		let { filename } = remotecommand;
+
+		switch (installtype) {
+			case 0:
+					xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=increment&filename=' + filename);
+				break;
+			case 1:
+					return;
+			case 3:
+					if (!confirm(browser.i18n.getMessage('confirm_discard_upgrade_warning'))) return;
+				break;
+			case 4:
+					if (!confirm(browser.i18n.getMessage('confirm_discard_downgrade_warning'))) return;
+				break;
+		}
+
+		let command = {};
+		for (let [key, value] of Object.entries(remotecommand))
+			if (key[0] != '_') command[key] = value;
+		command = JSON.parse(JSON.stringify(command));
+
+		store.dispatch(addHotkey({
+			combo: null,
+			enabled: false,
+			command
+		}));
+
+		setTimeout(()=> {
+			alert(browser.i18n.getMessage('message_installed'));
+			e.target.blur();
+		}, 0);
 	},
-	getInstalledType() {
+	getInstallType() {
 		// returns
 			// 0 - not installed
 			// 1 - installed and installed version is master version, disabled
@@ -1601,37 +1634,25 @@ const InstallBtn = ReactRedux.connect(
 		let command = hotkey.command; // the installed command
 		let isedited = 'base_share_unix' in command;
 		let version = versions.length - versions.findIndex(a_version => a_version.commit_message.unix === (command.share_unix || command.base_share_unix));
-
 		let masterversion = versions.length;
 
-		if (version === masterversion) {
-			if (isedited) {
-				return 4;
-			} else {
-				return 1;
-			}
-		} else if (version < masterversion) {
-			if (isedited) {
-				return 3;
-			} else {
-				return 2;
-			}
-		}
+		if (version === masterversion) return isedited ? 4 : 1;
+		else return isedited ? 3 : 2; // is obviously `version < masterversion`
 	},
 	render() {
 
 		// props for the button
 		let installtype_styles = {
-			0: { color:'success', label:browser.i18n.getMessage('install') },
-			1: { disabled:true, color:'success', label: browser.i18n.getMessage('installed') },
-			2: { color:'primary', label: browser.i18n.getMessage('upgrade') },
-			3: { color:'warning', label: browser.i18n.getMessage('discard_upgrade') },
-			4: { color:'danger', label: browser.i18n.getMessage('discard_downgrade') }
+			0: { icon:'plus', color:'success', label:browser.i18n.getMessage('install') },
+			1: { disabled:true, icon:'plus', color:'success', label: browser.i18n.getMessage('installed') },
+			2: { color:'primary', icon:'arrow-up', label: browser.i18n.getMessage('upgrade') },
+			3: { color:'warning', icon:'arrow-up', label: browser.i18n.getMessage('discard_upgrade') },
+			4: { color:'danger', icon:'arrow-down', label: browser.i18n.getMessage('discard_downgrade') }
 		}
-		let { label, disabled, color } = installtype_styles[this.getInstalledType()];
+		let { label, disabled, color, icon } = installtype_styles[this.getInstallType()];
 
-		return React.createElement('a', { href:'#', className:'btn btn-default btn-' + color, disabled },
-			React.createElement('span', { className:'glyphicon glyphicon-arrow-down' }),
+		return React.createElement('a', { href:'#', className:'btn btn-default btn-' + color, disabled, onClick:this.onClick },
+			React.createElement('span', { className:'glyphicon glyphicon-' + icon }),
 			' ' + label
 		);
 	}
