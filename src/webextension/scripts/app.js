@@ -1366,13 +1366,23 @@ const PageCommunity = ReactRedux.connect(
 	},
 	changeFilterTerm(e) {
 		let filterterm = e.target.value.toLowerCase();
+		if (!filterterm.length) filterterm = undefined; // i dont have to do this, as a blank string should do the trick, but eh
+
 		let { dispatch } = this.props; // redux
 		let { location:{pathname} } = this.props; // router
 
 		dispatch(modPageState(pathname, {filterterm})); // will do nothing if filtercat === oldfiltercat
 	},
+	keydnFilterTerm(e) {
+		if (e.keyCode === 27) {
+			e.stopPropagation();
+			e.preventDefault();
+			if (!e.repeat)
+				this.clickClearFilterTerm();
+		}
+	},
 	clickClearFilterTerm(e) {
-		if (!stopClickAndCheck0(e)) return;
+		if (e && !stopClickAndCheck0(e)) return;
 
 		document.getElementById('search').value = '';
 
@@ -1433,7 +1443,7 @@ const PageCommunity = ReactRedux.connect(
 						)
 					),
 					React.createElement('div', { className:'input-group', style:{width:'250px',margin:'0 auto'} },
-						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', onChange:this.changeFilterTerm, disabled:!remotecommands }),
+						React.createElement('input', { className:'form-control', placeholder:browser.i18n.getMessage('placeholder_communitysearch'), id:'search', type:'text', onChange:this.changeFilterTerm, disabled:!remotecommands, onKeyDown:this.keydnFilterTerm }),
 						istermfiltered && React.createElement('div', { className:'input-group-btn' },
 							React.createElement('a', { href:'#', className:'btn btn-default btn-danger', onClick:this.clickClearFilterTerm },
 								React.createElement('i', { className:'glyphicon glyphicon-remove' })
