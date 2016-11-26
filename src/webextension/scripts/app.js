@@ -678,6 +678,21 @@ const Hotkey = React.createClass({
 			alert(browser.i18n.getMessage('github_shared_fail', [ex]))
 		}
 	},
+	setHotkey(e) {
+		if (!stopClickAndCheck0(e)) return;
+		e.target.blur();
+
+		callInExe('recordHotkeyStart', undefined, ({__PROGRESS, recording, cancel, failed}) => {
+			if (__PROGRESS) {
+				console.log('recording:', recording);
+			} else {
+				console.log('ok done, cancel:', cancel, 'recording:', recording);
+				if (!cancel) {
+					console.log('no cancel, set it');
+				}
+			}
+		});
+	},
 	render() {
 		let { hotkey } = this.props;
 
@@ -713,7 +728,7 @@ const Hotkey = React.createClass({
 						name
 					),
 					React.createElement('p', undefined,
-						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'primary' : 'default'), 'data-tooltip':browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey') },
+						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'primary' : 'default'), 'data-tooltip':browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey'), onClick:this.setHotkey },
 							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
 						),
 						' ',
@@ -1464,7 +1479,7 @@ const PageCommunity = ReactRedux.connect(
 					' ' + browser.i18n.getMessage('loading_community')
 				),
 				remotecommands &&
-				React.createElement('div', { className:'row'},
+				React.createElement('div', { className:'container'},
 					// categories filter
 					React.createElement('div', { className:'col-md-3' },
 						React.createElement('div', { className:'list-group' },
@@ -1610,10 +1625,9 @@ const InstallBtn = ReactRedux.connect(
 			command
 		}));
 
-		setTimeout(()=> {
-			alert(browser.i18n.getMessage('message_installed'));
-			e.target.blur();
-		}, 0);
+		e.target.blur();
+
+		setTimeout(()=>alert(browser.i18n.getMessage('message_installed')), 0);
 	},
 	getInstallType() {
 		// returns

@@ -19,7 +19,7 @@
 	"PM": { "message": "PM" },
 	"am": { "message": "am" },
 	"pm": { "message": "pm" },
-	"strftime_format_date1": { "message": "%B %e, %Y", "description":"Example: \"Thu Nov 24 2016 13:12:15 GMT-0800 (Pacific Standard Time)\" becomes \"November 24, 2016\"" },
+	"strftime_format_date1": { "message": "%B %e, %Y", "description":"Example: \"Thu Nov 24 2016 13:12:15 GMT-0800 (Pacific Standard Time)\" becomes \"November 24, 2016\". To figure out the % symbols to use please see here - http://php.net/manual/en/function.strftime.php#refsect1-function.strftime-parameters" },
 
 	"startupfailed_title": { "message": "Trigger - Critical Error" },
 	"startupfailed_body": { "message": "Trigger cannot be used because it failed to startup.\n\n$REASON$", "placeholders": { "REASON":{"content":"$1","example":"one of the entries from the startupfailed_ stuff below"}} },

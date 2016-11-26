@@ -184,6 +184,7 @@ async function preinit() {
 				let extversion = nub.self.version;
 				console.log('extversion:', extversion);
 				console.log('equal?');
+				return 'debug remove this'; // debug
 				if (exeversion === extversion) {
 					return 'platinfo got, callInNative set, exe started, exe version is correct';
 				} else {
