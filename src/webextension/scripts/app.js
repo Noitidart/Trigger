@@ -450,12 +450,14 @@ const PageMyHotkeys = ReactRedux.connect(
 }));
 
 // hotkey elements
+let MAX_HOTKEY_COUNT = 3;
 const Hotkey = ReactRedux.connect(
 	function(state, ownProps) {
 		let { pages_state:{'/':pagestate={}} } = state;
 
 		return {
-			recording: pagestate.recording // { filename-of command to find hotkey, current-current recording }
+			recording: pagestate.recording, // { filename-of command to find hotkey, current-current recording }
+			hotkeys: state.hotkeys // used to determine if already three thigns enabled
 		}
 	}
 )(React.createClass({
@@ -463,6 +465,7 @@ const Hotkey = ReactRedux.connect(
 	trash(e) {
 		// trash hotkey and command
 		if (!stopClickAndCheck0(e)) return;
+		this.cancelRecordingIfSelf();
 		let { dispatch } = this.props; // redux
 		let { hotkey:{command:{filename}} } = this.props;
 		dispatch(removeHotkey(filename));
@@ -470,6 +473,7 @@ const Hotkey = ReactRedux.connect(
 	edit(e) {
 		// edit command
 		if (!stopClickAndCheck0(e)) return;
+		this.cancelRecordingIfSelf();
 		let { hotkey } = this.props;
 		let { hotkey:{command:{filename}} } = this.props;
 		// loadPage('/edit/' + filename, { testing:genFilename() }); // sets pagestate shows how i can do this in a redux way rather then a router way (relying on props.params)
@@ -688,16 +692,34 @@ const Hotkey = ReactRedux.connect(
 			alert(browser.i18n.getMessage('github_shared_fail', [ex]))
 		}
 	},
-	setHotkey(e) {
-		if (!stopClickAndCheck0(e)) return;
-		e.target.blur();
-
+	cancelRecordingIfSelf() {
+		// returns 1 if stopped, returns 0 if nothing recording, returns -1 if something else is recording
 		let { dispatch } = this.props; // redux
 		let { recording } = this.props; // mapped state
 		let { hotkey } = this.props;
+
 		let { filename } = hotkey.command;
 
-		if (recording) throw 'already recording for this or another hotkey';
+		if (recording) {
+			if (recording.filename == filename) {
+				dispatch(modPageState('/', 'recording', undefined));
+				callInExe('recordHotkeyStop');
+				return 1;
+			} else {
+				return -1;
+			}
+		} else {
+			return 0;
+		}
+	},
+	setHotkey(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { dispatch } = this.props; // redux
+		let { hotkey } = this.props;
+		let { filename } = hotkey.command;
+
+		if (this.cancelRecordingIfSelf() !== 0)  throw 'either just canceled recording, OR something else is recording';
 
 		dispatch(modPageState('/', 'recording', {filename, current:{mods:{}} }));
 
@@ -722,24 +744,38 @@ const Hotkey = ReactRedux.connect(
 					console.log('no cancel, set it');
 					let newhotkey = { ...hotkey, combo:current };
 					dispatch(editHotkey(newhotkey));
-					dispatch(modPageState('/', 'recording', undefined));
 				}
+				dispatch(modPageState('/', 'recording', undefined));
 			}
 		});
 	},
+	toggleEnable(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { dispatch } = this.props; // redux
+		let { hotkey } = this.props;
+		let { hotkeys } = this.props; // mapped state
+
+		let { combo, enabled } = hotkey;
+
+		let hashotkey = !!combo;
+		let isenabled = hotkey.enabled;
+		let allowenable = hashotkey && (isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < MAX_HOTKEY_COUNT);
+
+		if (!allowenable) return;
+
+		let newhotkey = { ...hotkey, enabled:!hotkey.enabled };
+		dispatch(editHotkey(newhotkey));
+	},
 	render() {
 		let { hotkey } = this.props;
+		let { recording, hotkeys } = this.props; // mapped state
 
 		let { enabled, combo, command } = hotkey;
 		let { share_unix, filename, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
 		// share_unix, filename, group, name, description, code
 
-		let combotxt;
-		let hashotkey = true;
-		if (!combo || !combo.length) {
-			combotxt = browser.i18n.getMessage('NO_HOTKEY');
-			hashotkey = false;
-		}
+		let hashotkey = !!combo;
 
 		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
 		// cant use `locale.file_sha` and `code.file_sha` to determine `islocal`, as it might be edited and not yet shared
@@ -749,20 +785,33 @@ const Hotkey = ReactRedux.connect(
 
 		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
 
-		let isenabled = enabled;
+		let isenabled, allowenable, tooltip_enable;
+		if (hashotkey) {
+			isenabled = enabled;
+			allowenable = isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < MAX_HOTKEY_COUNT;
+			tooltip_enable = browser.i18n.getMessage('tooltip_disablehotkey');
+			if (!isenabled) { // its disabled
+				if (allowenable) tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
+				else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', MAX_HOTKEY_COUNT);
+			}
+		}
+
+		let isrecording_self = recording && recording.filename == filename;
+		let isrecording_other = recording && recording.filename != filename;
+		let comboprops = { combo };
+		if (isrecording_self) comboprops.combo = recording.current;
+
 
 		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature' },
 			React.createElement('div', { className:'thumbnail' },
 				// React.createElement('img', { src:'http://placehold.it/800x500', alt:'' }),
 				React.createElement('div', { className:'caption' },
-					React.createElement('h3', undefined,
-						combotxt
-					),
+					React.createElement(HotkeyComboTxt, comboprops),
 					React.createElement('p', undefined,
 						name
 					),
 					React.createElement('p', undefined,
-						React.createElement('a', { href:'#', className:'btn btn-' + (!hashotkey ? 'primary' : 'default'), 'data-tooltip':browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey'), onClick:this.setHotkey },
+						React.createElement('a', { href:'#', className:'btn btn-' + (isrecording_self ? 'danger' : (!isrecording_other && !hashotkey ? 'primary' : 'default')), 'data-tooltip':(isrecording_self ? browser.i18n.getMessage('tooltip_cancelchangehotkey') : (isrecording_other ? undefined : browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey'))), onClick:this.setHotkey, disabled:isrecording_other },
 							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
 						),
 						' ',
@@ -770,7 +819,7 @@ const Hotkey = ReactRedux.connect(
 							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
 						),
 						hashotkey && ' ',
-						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + (isenabled ? 'default' : 'danger'), 'data-tooltip':browser.i18n.getMessage(isenabled ? 'tooltip_disablehotkey' : 'tooltip_enablehotkey') },
+						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + (allowenable && !isenabled ? 'success' : 'default'), 'data-tooltip':tooltip_enable, onClick:this.toggleEnable, disabled:!allowenable },
 							React.createElement('span', { className:'glyphicon glyphicon-off' })
 						),
 						' ',
@@ -792,7 +841,27 @@ const Hotkey = ReactRedux.connect(
 	}
 }));
 
-let HotkeyAdd = React.createClass({
+const HotkeyComboTxt = ({ combo }) => {
+	let text = [];
+	if (!combo) {
+		text.push(browser.i18n.getMessage('NO_HOTKEY'));
+	} else {
+		for (let modname in combo.mods) {
+			text.push(browser.i18n.getMessage('modname_' + modname.toLowerCase()));
+		}
+		text.push(combo.keyname || combo.key);
+
+		if (text.length === 1 && text[0] === undefined) {
+			// obviously is in recording mode, and no keys currently down
+			text[0] = browser.i18n.getMessage('hotkey_changing');
+		}
+	}
+	return React.createElement('h3', undefined,
+		text.join(browser.i18n.getMessage('combo_joiner'))
+	);
+}
+
+const HotkeyAdd = React.createClass({
 	displayName: 'HotkeyAdd',
 	loadAdd: e => stopClickAndCheck0(e) ? loadPage('/add') : null,
 	render() {
@@ -850,7 +919,6 @@ const OauthManagerRow = ({serviceid, config, auth, doForget, doAuth}) => {
 		if (auth) doForget(serviceid);
 		else doAuth(serviceid);
 
-		e.target.blur();
 	};
 
 	return React.createElement('div', { className:'oauth-manager-row' },
@@ -1660,8 +1728,6 @@ const InstallBtn = ReactRedux.connect(
 			command
 		}));
 
-		e.target.blur();
-
 		setTimeout(()=>alert(browser.i18n.getMessage('message_installed')), 0);
 	},
 	getInstallType() {
@@ -1748,5 +1814,13 @@ function getFormValues(domids) {
 		domvalues[domid] = domvalue;
 	}
 	return domvalues;
+}
+
+const origStopClickAndCheck0 = stopClickAndCheck0;
+stopClickAndCheck0 = function(e) {
+	// let target = e.target;
+	// setTimeout(()=>target.blur());
+	setTimeout(()=>document.activeElement.blur(), 0);
+	return origStopClickAndCheck0(e);
 }
 // end - specific helpers
