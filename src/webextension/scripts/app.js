@@ -25,7 +25,7 @@ async function init() {
     });
 
 	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
-	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', undefined, val=>resolve(val))) || 'en-US';
+	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val))) || 'en-US';
 	gLocale = 'en-US'; // for now, as i havent wrote up locales support
 
 	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant, nub:1 }, val => resolve(val)) );
@@ -450,26 +450,36 @@ const PageMyHotkeys = ReactRedux.connect(
 }));
 
 // hotkey elements
-const Hotkey = React.createClass({
+const Hotkey = ReactRedux.connect(
+	function(state, ownProps) {
+		let { pages_state:{'/':pagestate={}} } = state;
+
+		return {
+			recording: pagestate.recording // { filename-of command to find hotkey, current-current recording }
+		}
+	}
+)(React.createClass({
 	displayName: 'Hotkey',
 	trash(e) {
 		// trash hotkey and command
 		if (!stopClickAndCheck0(e)) return;
+		let { dispatch } = this.props; // redux
 		let { hotkey:{command:{filename}} } = this.props;
-		store.dispatch(removeHotkey(filename));
+		dispatch(removeHotkey(filename));
 	},
 	edit(e) {
 		// edit command
 		if (!stopClickAndCheck0(e)) return;
 		let { hotkey } = this.props;
 		let { hotkey:{command:{filename}} } = this.props;
-		// loadPage('/edit/' + filename, { testing:genFilename() });
+		// loadPage('/edit/' + filename, { testing:genFilename() }); // sets pagestate shows how i can do this in a redux way rather then a router way (relying on props.params)
 		loadPage('/edit/' + filename);
 	},
 	share: async function(e) {
 		// share command
 		if (!stopClickAndCheck0(e)) return;
 
+		let { dispatch } = this.props; // redux
 		let { hotkey } = this.props;
 		let { command } = hotkey;
 		let { filename } = command;
@@ -669,7 +679,7 @@ const Hotkey = React.createClass({
 
 			/////// ok pull request creation complete - update store and storage
 			// the reducer will update storage
-			store.dispatch(editHotkey(hotkey_withnewcommand, command.filename));
+			dispatch(editHotkey(hotkey_withnewcommand, command.filename));
 
 			if (confirm(browser.i18n.getMessage('github_shared_success')))
 				callInBackground('addTab', prurl);
@@ -682,13 +692,37 @@ const Hotkey = React.createClass({
 		if (!stopClickAndCheck0(e)) return;
 		e.target.blur();
 
-		callInExe('recordHotkeyStart', undefined, ({__PROGRESS, recording, cancel, failed}) => {
+		let { dispatch } = this.props; // redux
+		let { recording } = this.props; // mapped state
+		let { hotkey } = this.props;
+		let { filename } = hotkey.command;
+
+		if (recording) throw 'already recording for this or another hotkey';
+
+		dispatch(modPageState('/', 'recording', {filename, current:{mods:{}} }));
+
+		callInExe('recordHotkeyStart', undefined, ({__PROGRESS, recording:current, cancel}) => {
+			// go through mods and if it is prefixed with L_ or R_ remove it
+			if (current) {
+				for (let modname in current.mods) {
+					if (modname.startsWith('L_') || modname.startsWith('R_')) {
+						current.mods[modname.substr(2)] = 1;
+						delete current.mods[modname];
+					}
+				}
+			}
+
 			if (__PROGRESS) {
-				console.log('recording:', recording);
+				console.log('current:', current);
+				// replace current thats all
+				dispatch(modPageState('/', 'recording', {filename, current }));
 			} else {
-				console.log('ok done, cancel:', cancel, 'recording:', recording);
+				console.log('ok done, cancel:', cancel, 'current:', current);
 				if (!cancel) {
 					console.log('no cancel, set it');
+					let newhotkey = { ...hotkey, combo:current };
+					dispatch(editHotkey(newhotkey));
+					dispatch(modPageState('/', 'recording', undefined));
 				}
 			}
 		});
@@ -756,7 +790,7 @@ const Hotkey = React.createClass({
 			)
 		);
 	}
-});
+}));
 
 let HotkeyAdd = React.createClass({
 	displayName: 'HotkeyAdd',
@@ -865,6 +899,7 @@ const PageCommandForm = ReactRedux.connect(
 	validateForm: async function() {
 		console.log('in validateForm');
 
+		let { dispatch } = this.props; // redux
 		let { hotkey } = this.props; // mapped state
 		// hotkey is undefined, unless `iseditpage` is true
 		let { location:{pathname} } = this.props; // router
@@ -899,7 +934,7 @@ const PageCommandForm = ReactRedux.connect(
 
 		console.log('dispatching modPageState with isvalid:', isvalid);
 
-		store.dispatch(modPageState(pathname, { isvalid })); // modPageState does the difference check, if nothing in namevalues is changed it doesnt update
+		dispatch(modPageState(pathname, { isvalid })); // modPageState does the difference check, if nothing in namevalues is changed it doesnt update
 
 	},
 	beautifyCode(e) {
@@ -1684,6 +1719,7 @@ const PageInvalid = React.createClass({
 	}
 });
 
+// start - specific helpers
 function genFilename() {
 	// salt generator from http://mxr.mozilla.org/mozilla-aurora/source/toolkit/profile/content/createProfileWizard.js?raw=1*/
 
@@ -1701,378 +1737,6 @@ function genFilename() {
 	// return kSaltString + '.' + aName;
 }
 
-// start - cmn
-function pushAlternatingRepeating(aTargetArr, aEntry) {
-	// pushes into an array aEntry, every alternating
-		// so if aEntry 0
-			// [1, 2] becomes [1, 0, 2]
-			// [1] statys [1]
-			// [1, 2, 3] becomes [1, 0, 2, 0, 3]
-	let l = aTargetArr.length;
-	for (let i=l-1; i>0; i--) {
-		aTargetArr.splice(i, 0, aEntry);
-	}
-
-	return aTargetArr;
-}
-function stopClickAndCheck0(e) {
-	if (!e) return true;
-
-	e.stopPropagation();
-	e.preventDefault();
-
-	return e.button === 0 ? true : false;
-}
-
-// rev1 - not yet committed
-function xhrPromise(url, opt={}) {
-
-	// three ways to call
-		// xhrPromise( {url, ...} )
-		// xhrPromise(url, {...})
-		// xhrPromise(undefined/null, {...})
-
-	if (typeof(url) == 'object' && url && url.constructor.name == 'Object') opt = url;
-
-	// set default options
-	opt = {
-		restype: 'text',
-		method: 'GET',
-		data: undefined,
-		headers: {},
-		timeout: 0, // integer, milliseconds, 0 means never timeout, value is in milliseconds
-		onprogress: undefined, // set to callback you want called
-		onuploadprogress: undefined, // set to callback you want called
-		// odd options
-		reject: true,
-		fdhdr: false, // stands for "Form Data Header" set to true if you want it to add Content-Type application/x-www-form-urlencoded
-		// overwrite with what devuser specified
-		...opt
-	};
-	if (opt.url) url = opt.url;
-
-	return new Promise( (resolve, reject) => {
-		let xhr = new XMLHttpRequest();
-
-		if (opt.timeout) xhr.timeout = opt.timout;
-
-		let evf = f => ['load', 'error', 'abort', 'timeout'].forEach(f);
-
-		let handler = ev => {
-			evf(m => xhr.removeEventListener(m, handler, false));
-		    switch (ev.type) {
-		        case 'load':
-		            	resolve({ xhr, reason:ev.type });
-		            break;
-		        case 'abort':
-		        case 'error':
-		        case 'timeout':
-						console.error('ev:', ev);
-						if (opt.reject) reject({ xhr, reason:ev.type });
-						else resolve({ xhr, reason:ev.type });
-		            break;
-		        default:
-					if (opt.reject) reject({ xhr, reason:'unknown', type:ev.type });
-					else resolve({ xhr, reason:'unknown', type:ev.type });
-		    }
-		};
-
-		evf(m => xhr.addEventListener(m, handler, false));
-
-		if (opt.onprogress) xhr.addEventListener('progress', opt.onprogress, false);
-		if (opt.onuploadprogress) xhr.upload.addEventListener('progress', opt.onuploadprogress, false);
-
-		xhr.open(opt.method, url, true);
-
-		xhr.responseType = opt.restype;
-
-		if (opt.fdhdr) opt.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-		for (let h in opt.headers) xhr.setRequestHeader(h, opt.headers[h]);
-
-		if (typeof(opt.data) == 'object' && opt.data != null && opt.data.constructor.name == 'Object') opt.data = queryStringDom(opt.data);
-
-		xhr.send(opt.data);
-	});
-}
-
-function objectAssignDeep(target, source) {
-  // rev3 - https://gist.github.com/Noitidart/dffcd2ace6135350cd0ca80f615e06dc
-  var args       = Array.prototype.slice.call(arguments);
-  var startIndex = 1;
-  var output     = Object(target || {});
-
-  // Cycle the source object arguments.
-	for (var a = startIndex, alen = args.length ; a < alen ; a++) {
-		var from = args[a];
-		var keys = Object.keys(Object(from));
-
-    // Cycle the properties.
-		for (var k = 0; k < keys.length; k++) {
-      var key = keys[k];
-
-      // Merge arrays.
-      if (Array.isArray(output[key]) || Array.isArray(from[key])) {
-        var o = (Array.isArray(output[key]) ? output[key].slice() : []);
-        var f = (Array.isArray(from[key])   ? from[key].slice()   : []);
-        output[key] = o.concat(f);
-      }
-
-      // Copy functions references.
-      else if (typeof(output[key]) == 'function' || typeof(from[key]) == 'function') {
-        output[key] = from[key];
-      }
-
-      // Extend objects.
-      else if ((output[key] && typeof(output[key]) == 'object') || (from[key] && typeof(from[key]) == 'object')) {
-        output[key] = objectAssignDeep(output[key], from[key]);
-      }
-
-      // Copy all other types.
-      else {
-        output[key] = from[key];
-      }
-
-		}
-
-	}
-
-	return output;
-
-};
-
-function deepAccessUsingString(obj, key){
-	// https://medium.com/@chekofif/using-es6-s-proxy-for-safe-object-property-access-f42fa4380b2c#.xotsyhx8t
-  return key.split('.').reduce((nestedObject, key) => {
-    if(nestedObject && key in nestedObject) {
-      return nestedObject[key];
-    }
-    return undefined;
-  }, obj);
-}
-
-async function promiseTimeout(milliseconds) {
-	await new Promise(resolve => setTimeout(()=>resolve(), milliseconds))
-}
-
-async function doRetries(retry_ms, retry_cnt, callback) {
-	// callback should return promise
-	// total_time = retry_ms * retry_cnt
-	for (let i=0; i<retry_cnt; i++) {
-		try {
-			return await callback();
-			break;
-		} catch(err) {
-			console.warn('retry err:', err, 'attempt, i:', i);
-			if (i < retry_cnt-1) await promiseTimeout(retry_ms);
-			else throw err;
-		}
-	}
-}
-
-function queryStringDom(objstr, opts={}) {
-	// queryString using DOM capabilities, like `new URL`
-
-	// objstr can be obj or str
-	// if obj then it does stringify
-	// if str then it does parse. if str it should be a url
-
-	if (typeof(objstr) == 'string') {
-		// parse
-		// is a url?
-		let url;
-		try {
-			url = new URL(objstr);
-		} catch(ignore) {}
-
-		// if (url) objstr = objstr.substr(url.search(/[\?\#]/));
-		//
-		// if (objstr.startsWith('?')) objstr = objstr.substr(1);
-		// if (objstr.startsWith('#')) objstr = objstr.substr(1);
-
-		if (!url) throw new Error('Non-url not yet supported');
-
-		let ret = {};
-
-		let strs = [];
-		if (url.search) strs.push(url.search);
-		if (url.hash) strs.push(url.hash);
-		if (!strs.length) throw new Error('no search or hash on this url! ' + objstr);
-
-		strs.forEach(str => {
-			// taken from queryString 4.2.3 - https://github.com/sindresorhus/query-string/blob/3ba022410dbcff27404de090b33ce9b67768c139/index.js
-			str = str.trim().replace(/^(\?|#|&)/, '');
-			str.split('&').forEach(function (param) {
-				var parts = param.replace(/\+/g, ' ').split('=');
-				// Firefox (pre 40) decodes `%3D` to `=`
-				// https://github.com/sindresorhus/query-string/pull/37
-				var key = parts.shift();
-				var val = parts.length > 0 ? parts.join('=') : undefined;
-
-				key = decodeURIComponent(key);
-
-				// missing `=` should be `null`:
-				// http://w3.org/TR/2012/WD-url-20120524/#collect-url-parameters
-				val = val === undefined ? null : decodeURIComponent(val);
-
-				if (ret[key] === undefined) {
-					ret[key] = val;
-				} else if (Array.isArray(ret[key])) {
-					ret[key].push(val);
-				} else {
-					ret[key] = [ret[key], val];
-				}
-			});
-		});
-
-		return ret;
-	} else {
-		// stringify
-		// taken from queryString github release 4.2.3 but modified out the objectAssign for Object.assign and anded encode as strict-uri-encode - https://github.com/sindresorhus/query-string/blob/3ba022410dbcff27404de090b33ce9b67768c139/index.js
-		let objectAssign = Object.assign;
-		let encode = str => encodeURIComponent(str).replace(/[!'()*]/g, x => `%${x.charCodeAt(0).toString(16).toUpperCase()}`);
-		let obj = objstr;
-		// strict-uri-encode taken from - github release 2.0.0 - https://github.com/kevva/strict-uri-encode/blob/0b2dfae92f37618e1cb5f15911bb717e45b71385/index.js
-
-		// below
-		var defaults = {
-			encode: true,
-			strict: true
-		};
-
-		opts = objectAssign(defaults, opts);
-
-		return obj ? Object.keys(obj).sort().map(function (key) {
-			var val = obj[key];
-
-			if (val === undefined) {
-				return '';
-			}
-
-			if (val === null) {
-				return encode(key, opts);
-			}
-
-			if (Array.isArray(val)) {
-				var result = [];
-
-				val.slice().forEach(function (val2) {
-					if (val2 === undefined) {
-						return;
-					}
-
-					if (val2 === null) {
-						result.push(encode(key, opts));
-					} else {
-						result.push(encode(key, opts) + '=' + encode(val2, opts));
-					}
-				});
-
-				return result.join('&');
-			}
-
-			return encode(key, opts) + '=' + encode(val, opts);
-		}).filter(function (x) {
-			return x.length > 0;
-		}).join('&') : '';
-	}
-}
-
-class PromiseBasket {
-	constructor() {
-		this.promises = [];
-		this.thens = [];
-	}
-	add(aAsync, onThen) {
-		// onThen is optional
-		this.promises.push(aAsync);
-		this.thens.push(onThen);
-	}
-	async run() {
-		let results = await Promise.all(this.promises);
-		results.forEach((r, i)=>this.thens[i] ? this.thens[i](r) : null);
-		return results;
-	}
-}
-
-async function getUnixTime(opt={}) {
-	// retry_cnt is used for times to retry each each server
-	opt = {
-		timeout: 10000,
-		compensate: true, // subtracts half of the xhr request time from the time extracted from page
-		...opt
-	};
-
-	let servers = [
-		{
-			name: 'trigger-community',
-			xhropt: {
-				url: 'https://trigger-community.sundayschoolonline.org/unixtime.php',
-				restype: 'json'
-			},
-			xhrthen: ({response, status}) => {
-				if (status !== 200) throw `Unhandled Status (${status})`;
-				let unix_ms = response.unixtime * 1000;
-				return unix_ms;
-			}
-		},
-		{
-			name: 'CurrentTimestamp.com',
-			xhropt: {
-				url: 'http://currenttimestamp.com/'
-			},
-			xhrthen: ({response, status}) => {
-				if (status !== 200) throw `Unhandled Status (${status})`;
-
-				let extract = /current_time = (\d+);/.exec(response);
-				if (!extract) throw 'Extraction Failed';
-
-				let unix_ms = extract[1] * 1000;
-				return unix_ms;
-			}
-		},
-		{
-			name: 'convert-unix-time.com',
-			xhropt: {
-				url: 'http://convert-unix-time.com/'
-			},
-			xhrthen: ({response, status}) => {
-				if (status !== 200) throw `Unhandled Status (${status})`;
-
-				let extract = /currentTimeLink.*?(\d{10,})/.exec(response);
-				if (!extract) throw 'Extraction Failed';
-
-				let unix_ms = extract[1] * 1000;
-				return unix_ms;
-			}
-		}
-	];
-
-	let errors = [];
-	for (let { xhropt, name, xhrthen } of servers) {
-		try {
-			let start = Date.now();
-			let xpserver = await xhrPromise({ ...xhropt, timeout:opt.timeout });
-			let duration = Date.now() - start;
-			let halfduration = Math.round(duration / 2);
-
-			let unix_ms = xhrthen(xpserver.xhr);
-
-			if (opt.compensate) unix_ms -= halfduration;
-
-			return unix_ms;
-		} catch(ex) {
-			if (typeof(ex) == 'string') ex = ex
-			else if (ex && typeof(ex) == 'object' && ex.xhr && ex.reason) ex = 'XHR ' + ex.reason
-			else ex = ex.toString();
-
-			errors.push(`Server "${name}" Error: ` + ex);
-
-			continue;
-		}
-	}
-
-	throw errors;
-}
 function getFormValues(domids) {
 	// let domids = ['name', 'description', 'code'];
 	let processors = {group:parseInt} // custom for Trigger
@@ -2085,25 +1749,4 @@ function getFormValues(domids) {
 	}
 	return domvalues;
 }
-
-function compareIntThenLex(a, b) {
-    // sort ascending by integer, and then lexically
-	// ['1', '10', '2'] ->
-	// ['1', '2', '10']
-
-    let inta = parseInt(a);
-    let intb = parseInt(b);
-    let isaint = !isNaN(inta);
-    let isbint = !isNaN(intb);
-    if (isaint && isbint) {
-        return inta - intb; // sort asc
-    } else if (isaint && !isbint) {
-        return -1; // sort a to lower index then b
-    } else if (!isaint && isbint) {
-        return 1; // sort b to lower index then a
-    } else {
-        // neither are int's
-        return a.localeCompare(b)
-    }
-}
-// end - cmn
+// end - specific helpers

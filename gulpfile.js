@@ -140,12 +140,37 @@ gulp.task('initial-tx-js', ['import-3rdjs'], function() {
 // start - standalone3888 - is standalone because so `gulp watch` can trigger this without triggering the clean and copy stuff from above
 gulp.task('tx-js', function() {
 	// tx-js stands for transform-javascripts
-	var BABEL_POLYFILL = fs.readFileSync('node_modules/babel-polyfill/dist/polyfill.min.js', 'utf8');
+
+	var include_contents = {}; // to avoid multi readFileSync on same file path
 
 	return gulp.src(['src/**/*.js', '!src/**/3rd/*'])
 		.pipe(gulpif(options.production, replace(/^.*?console\.(warn|info|log|error|exception|time|timeEnd|jsm).*?$/mg, '')))
+		.pipe(replace(/\/\/ #include '([^']+)'/gm, function($0, $1) {
+			// $1 - ([^']+) - path to file to include
+			if (!include_contents[$1]) {
+				include_contents[$1] = fs.readFileSync($1, 'utf8');
+				if ($1 == 'node_modules/babel-polyfill/dist/polyfill.min.js') {
+					include_contents[$1] = 'var global = this;\n' + include_contents[$1];
+				}
+			};
+
+			return '// START INCLUDE - "' + $1 + '"\n' + include_contents[$1] + '// END INCLUDE - "' + $1 + '"';
+		}))
 		.pipe(babel())
-		.pipe(replace(/(^.*?$)([\s\S]*?)\/\/ #includetop 'babel-polyfill'/m, function($0, $1, $2) { return $1 + '\n\n\/\/ START INCLUDE - babel-polyfill\nvar global = this;\n' + BABEL_POLYFILL + '\/\/ END INCLUDE - babel-polyfill' + $2 }))
+		.pipe(replace(/(^.*?$)([\s\S]*?)\/\/ #includetop-nobabel '([^']+)'/m, function($0, $1, $2, $3) {
+			// $1 - (^.*?$) - the "using strict" usually, so first line
+			// $2 - ([\s\S]*?) - all lines up till the include line
+			// $3 - ([^']+) - path to file to include
+
+			if (!include_contents[$3]) {
+				include_contents[$3] = fs.readFileSync($3, 'utf8');
+				if ($3 == 'node_modules/babel-polyfill/dist/polyfill.min.js') {
+					include_contents[$3] = 'var global = this;\n' + include_contents[$3];
+				}
+			};
+
+			return $1 + '\n\n// START INCLUDE - "' + $3 + '"\n' + include_contents[$3] + '// END INCLUDE - "' + $3 + '"' + $2;
+		}))
 		.pipe(gulp.dest('dist'));
 });
 

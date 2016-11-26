@@ -45,7 +45,15 @@
 	],
 
 	"background": {
-		"scripts": ["scripts/3rd/polyfill.min.js", "scripts/3rd/comm/webext.js", "scripts/3rd/ba-issemver.min.js", "scripts/background.js"]
+		"scripts": [
+			"scripts/3rd/polyfill.min.js",
+			"scripts/3rd/ba-issemver.min.js",
+			"scripts/3rd/comm/webext.js",
+			"scripts/common/all.js",
+			"scripts/common/dom.js",
+			"scripts/common/background.js",
+			"scripts/background.js"
+		]
 	},
 
 	"browser_action": {

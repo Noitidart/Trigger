@@ -4,3 +4,6 @@
 [submodule "src/webextension/exe"]
 	path = src/webextension/exe
 	url = git@github.com:Noitidart/TriggerExe
+[submodule "src/webextension/scripts/common"]
+	path = src/webextension/scripts/common
+	url = git@github.com:Noitidart/common
