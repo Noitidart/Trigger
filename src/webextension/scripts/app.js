@@ -703,7 +703,7 @@ const Hotkey = ReactRedux.connect(
 		if (recording) {
 			if (recording.filename == filename) {
 				dispatch(modPageState('/', 'recording', undefined));
-				callInExe('recordHotkeyStop');
+				callInExe('stopRecordingKeys');
 				return 1;
 			} else {
 				return -1;
@@ -721,19 +721,9 @@ const Hotkey = ReactRedux.connect(
 
 		if (this.cancelRecordingIfSelf() !== 0)  throw 'either just canceled recording, OR something else is recording';
 
-		dispatch(modPageState('/', 'recording', {filename, current:{mods:{}} }));
+		dispatch(modPageState('/', 'recording', {filename, current:{mods:[]} }));
 
-		callInExe('recordHotkeyStart', undefined, ({__PROGRESS, recording:current, cancel}) => {
-			// go through mods and if it is prefixed with L_ or R_ remove it
-			if (current) {
-				for (let modname in current.mods) {
-					if (modname.startsWith('L_') || modname.startsWith('R_')) {
-						current.mods[modname.substr(2)] = 1;
-						delete current.mods[modname];
-					}
-				}
-			}
-
+		callInExe('startRecordingKeys', undefined, ({__PROGRESS, recording:current, cancel}) => {
 			if (__PROGRESS) {
 				console.log('current:', current);
 				// replace current thats all
@@ -846,10 +836,14 @@ const HotkeyComboTxt = ({ combo }) => {
 	if (!combo) {
 		text.push(browser.i18n.getMessage('NO_HOTKEY'));
 	} else {
-		for (let modname in combo.mods) {
+		for (let modname of combo.mods) {
+			console.log('modname:', modname);
+			if (modname == 'SUPER' && ['win', 'mac'].includes(nub.platform.os)) {
+				modname += '_' + nub.platform.os;
+			}
 			text.push(browser.i18n.getMessage('modname_' + modname.toLowerCase()));
 		}
-		text.push(combo.keyname || combo.key);
+		text.push(combo.keyname);
 
 		if (text.length === 1 && text[0] === undefined) {
 			// obviously is in recording mode, and no keys currently down
@@ -1728,7 +1722,7 @@ const InstallBtn = ReactRedux.connect(
 			command
 		}));
 
-		setTimeout(()=>alert(browser.i18n.getMessage('message_installed')), 0);
+		// setTimeout(()=>alert(browser.i18n.getMessage('message_installed')), 0);
 	},
 	getInstallType() {
 		// returns

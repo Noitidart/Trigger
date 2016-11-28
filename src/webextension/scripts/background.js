@@ -295,6 +295,11 @@ function onBrowserActionClicked() {
 }
 // end - browseraction
 
+function triggerCommand(aArg) {
+	let filename = aArg;
+	console.log('exe triggering filename:', filename);
+}
+
 async function fetchData(aArg={}) {
 	let { hydrant, nub:wantsnub } = aArg;
 	// xprefs means xpcom prefs
