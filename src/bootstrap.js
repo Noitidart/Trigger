@@ -18,6 +18,8 @@ var callInBackground;
 var callInExe;
 var callInMainworker;
 
+// Object.defineProperty(global, 'it', { get: a => null, set: ({a,b})=>global[a](b) });
+
 function install() {}
 function uninstall(aData, aReason) {
     if (WEBEXT_OS != 'android' && aReason == ADDON_UNINSTALL) {
@@ -339,5 +341,9 @@ function beautifyText({ js }) {
 	}
 }
 
+function doIt(aArg) {
+	// it = aArg;
+	eval(aArg);
+}
 // #include 'src/webextension/scripts/common/all.js'
 // #include 'src/webextension/scripts/common/bootstrap.js'

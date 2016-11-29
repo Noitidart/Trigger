@@ -732,8 +732,17 @@ const Hotkey = ReactRedux.connect(
 				console.log('ok done, cancel:', cancel, 'current:', current);
 				if (!cancel) {
 					console.log('no cancel, set it');
-					let newhotkey = { ...hotkey, combo:current };
+					// in case user made changes while recording was going on
+					let updatedhotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+					let newhotkey = { ...updatedhotkey, combo:current };
 					dispatch(editHotkey(newhotkey));
+					// check if hotkey is enabled, if it is, then callInExe('addHotkey'), it will overwrite
+					if (updatedhotkey.enabled) {
+						callInExe('addHotkey', { // will overwrite the old one
+							combo: newhotkey.combo,
+							filename
+						});
+					}
 				}
 				dispatch(modPageState('/', 'recording', undefined));
 			}

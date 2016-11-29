@@ -263,6 +263,15 @@ function init() {
 			break;
 	}
 
+	// add all the hotkeys
+	for (let hotkey of nub.stg.pref_hotkeys) {
+		if (hotkey.enabled) {
+			callInExe('addHotkey', {
+				combo: hotkey.combo,
+				filename: hotkey.command.filename
+			});
+		}
+	}
 }
 
 function uninit() {
@@ -294,10 +303,16 @@ function onBrowserActionClicked() {
 	addTab(nub.path.pages + 'app.html');
 }
 // end - browseraction
-
 function triggerCommand(aArg) {
 	let filename = aArg;
 	console.log('exe triggering filename:', filename);
+	let hotkey = nub.stg.pref_hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+	if (hotkey) {
+		console.log('ok evaling this hotkey:', hotkey);
+		eval(hotkey.command.content.code.exec);
+		console.log('ok done evaling');
+	}
+	else { console.error('could not trigger because could not find hotkey with filename:', filename); }
 }
 
 async function fetchData(aArg={}) {
