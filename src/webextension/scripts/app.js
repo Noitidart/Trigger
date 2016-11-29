@@ -467,8 +467,9 @@ const Hotkey = ReactRedux.connect(
 		if (!stopClickAndCheck0(e)) return;
 		this.cancelRecordingIfSelf();
 		let { dispatch } = this.props; // redux
-		let { hotkey:{command:{filename}} } = this.props;
+		let { hotkey:{enabled, command:{filename}} } = this.props;
 		dispatch(removeHotkey(filename));
+		if (enabled) callInExe('removeHotkey', { filename });
 	},
 	edit(e) {
 		// edit command
