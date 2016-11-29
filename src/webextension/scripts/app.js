@@ -754,7 +754,20 @@ const Hotkey = ReactRedux.connect(
 
 		if (!allowenable) return;
 
-		let newhotkey = { ...hotkey, enabled:!hotkey.enabled };
+		let newenabled = !hotkey.enabled; // true for enabled, false for disabled
+
+		if (newenabled) {
+			callInExe('addHotkey', {
+				combo: hotkey.combo,
+				filename: hotkey.command.filename
+			});
+		} else {
+			callInExe('removeHotkey', {
+				filename: hotkey.command.filename
+			});
+		}
+
+		let newhotkey = { ...hotkey, enabled:newenabled };
 		dispatch(editHotkey(newhotkey));
 	},
 	render() {
