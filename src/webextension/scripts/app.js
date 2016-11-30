@@ -592,7 +592,7 @@ const Hotkey = ReactRedux.connect(
 					// if (!command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
 
 					// step 3b.1 get sha of file - actually get contents so i can calculate changes
-					let xpsha = await xhrPromise(`https://api.github.com/repos/Noitidar/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
+					let xpsha = await xhrPromise(`https://api.github.com/repos/Noitidart/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
 					console.log('xpsha:', xpsha);
 					if (xpsha.xhr.status === 404) {
 						// gives 404 if user created THEN shared THEN before i accept pull request user edited and shared another update
