@@ -112,6 +112,7 @@
 
 	"back": { "message": "Back" },
 	"try_again": { "message": "Try Again" },
+	"close": { "message": "Close" },
 
 	"loading_community": { "message": "Loading community from Github..." },
 

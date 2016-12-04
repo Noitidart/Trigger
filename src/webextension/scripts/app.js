@@ -144,6 +144,21 @@ function modPageState(pathname, namevalues, value) {
 		namevalues
 	}
 }
+let MODAL_NEXT_ID = 0;
+function createModal(pathname, modal) {
+	// obj = link42112
+	/*
+	modal {
+		id: auto gen number,
+		title: 'blah',
+		body: 'Buy', // will render window['ModalBody' + modal.body] link8847777
+		ok: { label:string, onClick:function }
+		cancel: { label:string, onClick:function }
+	}
+	*/
+	modal.id = MODAL_NEXT_ID++;
+	store.dispatch(modPageState(pathname, { modal }));
+}
 
 // reducer
 function pages_state(state={}, action) {
@@ -366,11 +381,137 @@ const App = React.createClass({
 		console.log('app props:', this.props);
 
 		return React.createElement('div', { id:'app', className:'app container' },
+			React.createElement(Modal, { pathname }),
+			React.createElement(ModalBackdrop, { pathname }),
 			React.createElement(Header, { pathname, params }),
 			children
 		);
 	}
 });
+// start - Modal and ModalBackdrop and ModalContent***
+const Modal = ReactRedux.connect(
+	function(state, ownProps) {
+		let { pathname } = ownProps; // router
+		let pagestate = state.pages_state[pathname] || {};
+		return {
+			modal: pagestate.modal
+		}
+	}
+)(React.createClass({
+	displayName: 'Modal',
+	_props: {modal:{}}, // because on destroy animation, it will destroy contents otherwise link11882
+	doOk(e) {
+		if (!stopClickAndCheck0(e)) return;
+		let onClick = deepAccessUsingString(this._props, 'ok.onClick');
+		if (onClick) onClick();
+		this.doOut();
+	},
+	doCancel(e) {
+		if (!stopClickAndCheck0(e)) return;
+		let onClick = deepAccessUsingString(this._props, 'cancel.onClick');
+		if (onClick) onClick();
+		this.doOut();
+	},
+	doOut() {
+		let { pathname } = this._props; // router
+		store.dispatch(modPageState(pathname, 'modal', undefined));
+	},
+	doDomClose(e) {
+		document.body.parentNode.classList.remove('modal-open');
+		// document.querySelector('.modal').classList.remove('in');
+		// document.querySelector('.modal-backdrop').classList.remove('in');
+	},
+	scrollbar_width: null,
+	measureScrollbar() {
+		if (this.scrollbar_width === null) {
+			let scrolldiv = document.createElement('div');
+		    scrolldiv.className = 'modal-scrollbar-measure';
+		    document.body.append(scrolldiv);
+		    this.scrollbar_width = scrolldiv.offsetWidth - scrolldiv.clientWidth;
+		    document.body.removeChild(scrolldiv);
+		}
+		return this.scrollbar_width;
+	},
+	doDomShow() {
+		document.body.parentNode.classList.add('modal-open');
+		// document.querySelector('.modal-backdrop').classList.add('in');
+		// document.querySelector('.modal').classList.add('in');
+	},
+	shouldComponentUpdate(nextProps, nextState) {
+		if (this.props.modal != nextProps.modal) console.error('will update modal');
+		else console.error('will NOT update modal');
+
+		return this.props.modal != nextProps.modal;
+		// return React.addons.shallowCompare(this, nextProps, nextState);
+	},
+	render() {
+		let { modal } = this.props; // mapped state
+
+		if (modal) {
+			// if (this._props.id != modal.id) {
+				// setTimeout(this.doDomShow, 200);
+				this.doDomShow();
+			// }
+			this._props = this.props; // link11882
+		} else {
+			// if (this._props.id != modal.id) {
+				// setTimeout(this.doDomClose, 200);
+				this.doDomClose();
+			// }
+		}
+
+		let { title, body, ok={}, cancel={} } = this._props.modal; // mapped state
+		let ok_label = ok.label;
+		let cancel_label = cancel.label;
+		// console.log(title, body, ok, cancel, '_props:', this._props, 'props:', this.props);
+
+		return React.createElement('div', { className:'modal fade' + (modal ? ' in' : ''), style:{paddingRight:this.measureScrollbar()+'px', pointerEvents:modal?'':'none'} },
+			React.createElement('div', { className:'modal-dialog' },
+				React.createElement('div', { className:'modal-content' },
+					React.createElement('div', { className:'modal-header' },
+						React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.doCancel },
+							React.createElement('span', { 'aria-hidden':'true'}, '×'),
+							React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+						),
+						React.createElement('h4', { className:'modal-title' }, title),
+					),
+					body && React.createElement(window['ModalBody' + body]),
+					React.createElement('div', { className:'modal-footer' },
+						React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.doCancel }, cancel_label),
+						React.createElement('button', { className:'btn btn-primary', onClick:this.doOk }, ok_label)
+					)
+				)
+			)
+		);
+	}
+}));
+const ModalBackdrop = ReactRedux.connect(
+	function(state, ownProps) {
+		let { pathname } = ownProps; // router
+		let pagestate = state.pages_state[pathname] || {};
+		return {
+			modal: pagestate.modal
+		}
+	}
+)(React.createClass({
+	displayName: 'ModalBackdrop',
+	render() {
+		let { modal } = this.props;
+		return React.createElement('div', { className:'modal-backdrop fade' + (modal ? ' in' : ''), style:{pointerEvents:modal?'':'none'} });
+	}
+}));
+
+var ModalBodyBuy = React.createClass({ // need var due to link8847777
+	displayName: 'ModalContentBuy',
+	render() {
+		return React.createElement('div', { className:'modal-body' },
+			React.createElement('p', undefined,
+				'One fine body...'
+			)
+		);
+	}
+});
+// end - Modal and ModalBackdrop
 // start - Header
 const Header = React.createClass({
 	displayName: 'Header',

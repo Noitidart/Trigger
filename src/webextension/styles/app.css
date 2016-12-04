@@ -99,3 +99,15 @@ select.btn {
 	width: 20%;
 	display: inline-block;
 }
+
+/* start - Modal and ModalBackdrop */
+.modal-backdrop {
+	background-color: rgba(0, 0, 0, 0.5);
+}
+.modal-header button {
+	font-size: 2em;
+}
+.modal {
+	display: block !important;
+}
+/* end - Modal and ModalBackdrop */
