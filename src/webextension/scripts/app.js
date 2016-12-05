@@ -148,12 +148,19 @@ let MODAL_NEXT_ID = 0;
 function createModal(pathname, modal) {
 	// obj = link42112
 	/*
+	createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { title:'title', msg:'hiiii', ok:{label:'ok'}, cancel:{label:'cancel'} })
 	modal {
 		id: auto gen number,
-		title: 'blah',
-		body: 'Buy', // will render window['ModalBody' + modal.body] link8847777
-		ok: { label:string, onClick:function }
-		cancel: { label:string, onClick:function },
+		////// provide EITHER content_component OR the rest
+		content_component: 'Buy', // will render window[modal.content_component] so will need to declare it with `var` most likely as `const` does not declare it on `window` link8847777
+		////// provide EITHER content_component OR the rest
+		title: string
+		msg: string
+		ok: object;optional;default=undefined {
+			label:string;optional;defualt=undefined - if not provided then button not rendered and onClick has no affect,
+			onClick: function;optional;default=undefined
+		}
+		cancel: same as `ok`
 	}
 	*/
 	gNagsEnter = true;
@@ -552,6 +559,8 @@ const Nag = ({pathname, nag}) => {
 };
 // end - Nags
 // start - Modal and ModalBackdrop and ModalContent***
+let gModalEnter = false;
+let gModalLeave = false;
 const ModalWrap = ReactRedux.connect(
 	function(state, ownProps) {
 		let { pathname } = ownProps; // router
@@ -565,15 +574,11 @@ const ModalWrap = ReactRedux.connect(
 	render() {
 		let { modal, pathname } = this.props;
 
-		if (gNagsEnter) setTimeout(()=>gNagsEnter=false, 0);
-		if (gNagsLeave) setTimeout(()=>gNagsLeave=false, 0);
-		if (gNagsLeave) setTimeout(()=> {
-			gNagsLeave = false;
-			// store.dispatch(modPageState(pathname, { modal: {...modal} })); // same tactic as link229439
-		}, 0);
+		if (gModalEnter) setTimeout(()=>gModalEnter=false, 0);
+		if (gModalLeave) setTimeout(()=>gModalLeave=false, 0); // tactic link229439 is not needed because i only have a single modal visible, unlike nags which has multiple nag elements: `store.dispatch(modPageState(pathname, { modal: {...modal} }));`
 
 		return React.createElement('span', { className:'my-modal-wrap' },
-			React.createElement(ReactCSSTransitionGroup, getTrans('modalfade', { transitionEnter:gNagsEnter, transitionLeave:gNagsLeave }),
+			React.createElement(ReactCSSTransitionGroup, getTrans('modalfade', { transitionEnter:gModalEnter, transitionLeave:gModalLeave }),
 				modal && React.createElement(Modal, { modal, pathname })
 			),
 			React.createElement(ReactCSSTransitionGroup, getTrans('fadequick', { transitionEnter:gNagsEnter, transitionLeave:gNagsLeave }),
@@ -598,7 +603,7 @@ const Modal = React.createClass({
 	},
 	closeModal() {
 		let { modal, pathname } = this.props; // router
-		gNagsLeave = true;
+		gModalLeave = true;
 		store.dispatch(modPageState(pathname, { modal: {...modal} })); // same tactic as link229439
 
 		store.dispatch(modPageState(pathname, 'modal', undefined));
@@ -624,7 +629,7 @@ const Modal = React.createClass({
 
 		return React.createElement('div', { className:'modal', style:{paddingRight:this.measureScrollbar()+'px'} },
 			React.createElement('div', { className:'modal-dialog' },
-				content_component && React.createElement(window['ModalContentComponent' + content_component], { closeModal:this.closeModal }),
+				content_component && React.createElement(window[content_component], { closeModal:this.closeModal }),
 				!content_component && React.createElement('div', { className:'modal-content' },
 					React.createElement('div', { className:'modal-header' },
 						React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.doCancel },
@@ -1081,7 +1086,7 @@ const Hotkey = ReactRedux.connect(
 			createModal(
 				ReactRouter.browserHistory.getCurrentLocation().pathname,
 				{
-					content_component: 'Buy'
+					content_component: 'ModalContentComponentBuy'
 					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
 					// template: 'Buy',
 					// body: 'Buy',
