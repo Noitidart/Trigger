@@ -153,9 +153,10 @@ function createModal(pathname, modal) {
 		title: 'blah',
 		body: 'Buy', // will render window['ModalBody' + modal.body] link8847777
 		ok: { label:string, onClick:function }
-		cancel: { label:string, onClick:function }
+		cancel: { label:string, onClick:function },
 	}
 	*/
+	gNagsEnter = true;
 	modal.id = MODAL_NEXT_ID++;
 	store.dispatch(modPageState(pathname, { modal }));
 }
@@ -421,17 +422,17 @@ function createTrans(transitionName, transitionEnterTimeout, transitionLeaveTime
 		props.transitionAppearTimeout = transitionEnterTimeout;
 	}
 	if (transitionEnterTimeout === 0) {
-		delete props.transitionEnterTimeout;
 		props.transitionEnter = false;
+		delete props.transitionEnterTimeout;
 	}
 	if (transitionLeaveTimeout === 0) {
-		delete props.transitionLeaveTimeout;
 		props.transitionLeave = false;
+		delete props.transitionLeaveTimeout;
 	}
 	return props;
 }
 
-function getTrans(transitionName, otherProps) {
+function getTrans(transitionName, otherProps={}) {
 	// use this in the React.createElement(ReactCSSTransitionGroup, getTrans(...))
 	for (let trans of gTrans) {
 		if (trans.transitionName == transitionName) {
@@ -480,8 +481,7 @@ const App = React.createClass({
 		console.log('app props:', this.props);
 
 		return React.createElement('div', { id:'app', className:'app container' },
-			React.createElement(Modal, { pathname }),
-			React.createElement(ModalBackdrop, { pathname }),
+			React.createElement(ModalWrap, { pathname }),
 			React.createElement(Nags, { pathname }),
 			React.createElement(Header, { pathname, params }),
 			children
@@ -552,7 +552,7 @@ const Nag = ({pathname, nag}) => {
 };
 // end - Nags
 // start - Modal and ModalBackdrop and ModalContent***
-const Modal = ReactRedux.connect(
+const ModalWrap = ReactRedux.connect(
 	function(state, ownProps) {
 		let { pathname } = ownProps; // router
 		let pagestate = state.pages_state[pathname] || {};
@@ -561,28 +561,47 @@ const Modal = ReactRedux.connect(
 		}
 	}
 )(React.createClass({
+	displayName: 'ModalWrap',
+	render() {
+		let { modal, pathname } = this.props;
+
+		if (gNagsEnter) setTimeout(()=>gNagsEnter=false, 0);
+		if (gNagsLeave) setTimeout(()=>gNagsLeave=false, 0);
+		if (gNagsLeave) setTimeout(()=> {
+			gNagsLeave = false;
+			// store.dispatch(modPageState(pathname, { modal: {...modal} })); // same tactic as link229439
+		}, 0);
+
+		return React.createElement('span', { className:'my-modal-wrap' },
+			React.createElement(ReactCSSTransitionGroup, getTrans('modalfade', { transitionEnter:gNagsEnter, transitionLeave:gNagsLeave }),
+				modal && React.createElement(Modal, { modal, pathname })
+			),
+			React.createElement(ReactCSSTransitionGroup, getTrans('fadequick', { transitionEnter:gNagsEnter, transitionLeave:gNagsLeave }),
+				modal && React.createElement(ModalBackdrop)
+			)
+		);
+	}
+}));
+const Modal = React.createClass({
 	displayName: 'Modal',
-	_props: {modal:{}}, // because on destroy animation, it will destroy contents otherwise link11882
 	doOk(e) {
 		if (!stopClickAndCheck0(e)) return;
-		let onClick = deepAccessUsingString(this._props, 'ok.onClick');
+		let onClick = deepAccessUsingString(this.props, 'ok.onClick');
 		if (onClick) onClick();
-		this.doOut();
+		this.closeModal();
 	},
 	doCancel(e) {
 		if (!stopClickAndCheck0(e)) return;
-		let onClick = deepAccessUsingString(this._props, 'cancel.onClick');
+		let onClick = deepAccessUsingString(this.props, 'cancel.onClick');
 		if (onClick) onClick();
-		this.doOut();
+		this.closeModal();
 	},
-	doOut() {
-		let { pathname } = this._props; // router
+	closeModal() {
+		let { modal, pathname } = this.props; // router
+		gNagsLeave = true;
+		store.dispatch(modPageState(pathname, { modal: {...modal} })); // same tactic as link229439
+
 		store.dispatch(modPageState(pathname, 'modal', undefined));
-	},
-	doDomClose(e) {
-		document.body.parentNode.classList.remove('modal-open');
-		// document.querySelector('.modal').classList.remove('in');
-		// document.querySelector('.modal-backdrop').classList.remove('in');
 	},
 	scrollbar_width: null,
 	measureScrollbar() {
@@ -595,42 +614,18 @@ const Modal = ReactRedux.connect(
 		}
 		return this.scrollbar_width;
 	},
-	doDomShow() {
-		document.body.parentNode.classList.add('modal-open');
-		// document.querySelector('.modal-backdrop').classList.add('in');
-		// document.querySelector('.modal').classList.add('in');
-	},
-	shouldComponentUpdate(nextProps, nextState) {
-		if (this.props.modal != nextProps.modal) console.error('will update modal');
-		else console.error('will NOT update modal');
-
-		return this.props.modal != nextProps.modal;
-		// return React.addons.shallowCompare(this, nextProps, nextState);
-	},
 	render() {
-		let { modal } = this.props; // mapped state
+		let { modal } = this.props;
 
-		if (modal) {
-			// if (this._props.id != modal.id) {
-				// setTimeout(this.doDomShow, 200);
-				this.doDomShow();
-			// }
-			this._props = this.props; // link11882
-		} else {
-			// if (this._props.id != modal.id) {
-				// setTimeout(this.doDomClose, 200);
-				this.doDomClose();
-			// }
-		}
-
-		let { title, body, ok={}, cancel={} } = this._props.modal; // mapped state
+		let { content_component, title, msg, ok={}, cancel={} } = modal; // mapped state
 		let ok_label = ok.label;
 		let cancel_label = cancel.label;
-		// console.log(title, body, ok, cancel, '_props:', this._props, 'props:', this.props);
+		// console.log(title, body, ok, cancel, 'props:', this.props, 'props:', this.props);
 
-		return React.createElement('div', { className:'modal fade' + (modal ? ' in' : ''), style:{paddingRight:this.measureScrollbar()+'px', pointerEvents:modal?'':'none'} },
+		return React.createElement('div', { className:'modal', style:{paddingRight:this.measureScrollbar()+'px'} },
 			React.createElement('div', { className:'modal-dialog' },
-				React.createElement('div', { className:'modal-content' },
+				content_component && React.createElement(window['ModalContentComponent' + content_component], { closeModal:this.closeModal }),
+				!content_component && React.createElement('div', { className:'modal-content' },
 					React.createElement('div', { className:'modal-header' },
 						React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.doCancel },
 							React.createElement('span', { 'aria-hidden':'true'}, '×'),
@@ -638,38 +633,54 @@ const Modal = ReactRedux.connect(
 						),
 						React.createElement('h4', { className:'modal-title' }, title),
 					),
-					body && React.createElement(window['ModalBody' + body]),
-					React.createElement('div', { className:'modal-footer' },
-						React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.doCancel }, cancel_label),
-						React.createElement('button', { className:'btn btn-primary', onClick:this.doOk }, ok_label)
+					React.createElement('div', { className:'modal-body' },
+						React.createElement('p', undefined, msg)
+					),
+					(cancel_label || ok_label) && React.createElement('div', { className:'modal-footer' },
+						cancel_label && React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.doCancel }, cancel_label),
+						ok_label && React.createElement('button', { className:'btn btn-primary', onClick:this.doOk }, ok_label)
 					)
 				)
 			)
 		);
 	}
-}));
-const ModalBackdrop = ReactRedux.connect(
-	function(state, ownProps) {
-		let { pathname } = ownProps; // router
-		let pagestate = state.pages_state[pathname] || {};
-		return {
-			modal: pagestate.modal
-		}
-	}
-)(React.createClass({
+});
+const ModalBackdrop = React.createClass({
 	displayName: 'ModalBackdrop',
 	render() {
-		let { modal } = this.props;
-		return React.createElement('div', { className:'modal-backdrop fade' + (modal ? ' in' : ''), style:{pointerEvents:modal?'':'none'} });
+		return React.createElement('div', { className:'modal-backdrop' });
 	}
-}));
+});
 
-var ModalBodyBuy = React.createClass({ // need var due to link8847777
-	displayName: 'ModalContentBuy',
+var ModalContentComponentBuy = React.createClass({ // need var due to link8847777
+	displayName: 'ModalContentComponentBuy',
+	onCancel(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { closeModal } = this.props;
+		closeModal();
+	},
+	onOk(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { closeModal } = this.props;
+		closeModal();
+	},
 	render() {
-		return React.createElement('div', { className:'modal-body' },
-			React.createElement('p', undefined,
-				'One fine body...'
+		return React.createElement('div', { className:'modal-content' },
+			React.createElement('div', { className:'modal-header' },
+				React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+					React.createElement('span', { 'aria-hidden':'true'}, '×'),
+					React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+				),
+				React.createElement('h4', { className:'modal-title' }, browser.i18n.getMessage('title_maxhotkeysenabled')),
+			),
+			React.createElement('div', { className:'modal-body' },
+				React.createElement('p', undefined, 'msg')
+			),
+			React.createElement('div', { className:'modal-footer' },
+				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('dismiss_maxhotkeysenabled')),
+				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage('confirm_maxhotkeysenabled'))
 			)
 		);
 	}
@@ -1066,7 +1077,26 @@ const Hotkey = ReactRedux.connect(
 		let isenabled = hotkey.enabled;
 		let allowenable = hashotkey && (isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < MAX_HOTKEY_COUNT);
 
-		if (!allowenable) return;
+		if (!allowenable) {
+			createModal(
+				ReactRouter.browserHistory.getCurrentLocation().pathname,
+				{
+					content_component: 'Buy'
+					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
+					// template: 'Buy',
+					// body: 'Buy',
+					// ok: {
+					// 	label: browser.i18n.getMessage('confirm_maxhotkeysenabled'),
+					// 	// onClick: function
+					// },
+					// cancel: {
+					// 	label: browser.i18n.getMessage('dismiss_maxhotkeysenabled'),
+					// 	// onClick:
+					// }
+				}
+			);
+			return;
+		}
 
 		let newenabled = !hotkey.enabled; // true for enabled, false for disabled
 
@@ -1102,14 +1132,18 @@ const Hotkey = ReactRedux.connect(
 
 		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
 
-		let isenabled, allowenable, tooltip_enable;
+		let isenabled, allowenable, tooltip_enable, color_enable;
 		if (hashotkey) {
 			isenabled = enabled;
 			allowenable = isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < MAX_HOTKEY_COUNT;
 			tooltip_enable = browser.i18n.getMessage('tooltip_disablehotkey');
+			color_enable = 'danger';
 			if (!isenabled) { // its disabled
-				if (allowenable) tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
-				else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', MAX_HOTKEY_COUNT);
+				color_enable = 'success';
+				tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
+				if (!allowenable) color_enable = 'default';
+				// if (allowenable) tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
+				// else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', MAX_HOTKEY_COUNT);
 			}
 		}
 
@@ -1136,7 +1170,7 @@ const Hotkey = ReactRedux.connect(
 							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
 						),
 						hashotkey && ' ',
-						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + (allowenable && !isenabled ? 'success' : 'default'), 'data-tooltip':tooltip_enable, onClick:this.toggleEnable, disabled:!allowenable },
+						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + color_enable, 'data-tooltip':tooltip_enable, onClick:this.toggleEnable, /*disabled:!allowenable*/ },
 							React.createElement('span', { className:'glyphicon glyphicon-off' })
 						),
 						' ',

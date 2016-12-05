@@ -102,13 +102,17 @@ select.btn {
 
 /* start - Modal and ModalBackdrop */
 .modal-backdrop {
-	background-color: rgba(0, 0, 0, 0.5);
+	background-color: rgba(0, 0, 0, 0.5) !important;
 }
 .modal-header button {
+	/* the close button */
 	font-size: 2em;
 }
 .modal {
 	display: block !important;
+}
+.modal-body {
+	background-color: rgba(0,0,0,0.02);
 }
 /* end - Modal and ModalBackdrop */
 /* start - Nags */
@@ -207,21 +211,21 @@ select.btn {
 
 /* start - react transitions */
 /* fade */
-.fade-enter, .fade-appear { opacity: 0; }
+.fade-enter, .fade-appear { opacity:0; }
 .fade-enter.fade-enter-active,
-.fade-appear.fade-appear-active { opacity: 1; }
-.fade-leave { opacity: 1; }
-.fade-leave.fade-leave-active { opacity: 0; }
+.fade-appear.fade-appear-active { opacity:1; }
+.fade-leave { opacity:1; }
+.fade-leave.fade-leave-active { opacity:0; }
 /* fadequick */
-.fadequick-enter, .fadequick-appear { opacity: 0; }
+.fadequick-enter, .fadequick-appear { opacity:0; }
 .fadequick-enter.fadequick-enter-active,
-.fadequick-appear.fadequick-appear-active { opacity: 1; }
-.fadequick-leave { opacity: 1; }
-.fadequick-leave.fadequick-leave-active { opacity: 0; }
+.fadequick-appear.fadequick-appear-active { opacity:1; }
+.fadequick-leave { opacity:1; }
+.fadequick-leave.fadequick-leave-active { opacity:0; }
 /* modalfade */
-.modalfade-enter, .modalfade-appear { transform: translate(0, -25%); }
+.modalfade-enter, .modalfade-appear { opacity:0; transform:translate(0, -25%); }
 .modalfade-enter.modalfade-enter-active,
-.modalfade-appear.modalfade-appear-active { transform: translate(0, 0); transition-timing-function: ease-out; }
-.modalfade-leave { transform: translate(0, 0); }
-.modalfade-leave.modalfade-leave-active { transform: translate(0, -25%); transition-timing-function: ease-out; }
+.modalfade-appear.modalfade-appear-active { opacity:1; transform:translate(0, 0); transition-timing-function:ease-out; }
+.modalfade-leave { opacity:1; transform:translate(0, 0); }
+.modalfade-leave.modalfade-leave-active { opacity:0; transform:translate(0, -25%); transition-timing-function:ease-out; }
 /* end - react transitions */
