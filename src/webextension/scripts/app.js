@@ -189,10 +189,12 @@ function removeNag(pathname, id) {
 
 	let ix = oldnags.findIndex(nag => nag.id === id);
 	if (ix > -1) {
-		// set for gNagsLeave to true
-		gNagsLeave = true;
-		// set back oldnags but as a new array so it sets the gNagsLeave // link229439
-		store.dispatch(modPageState(pathname, { nags:[...oldnags] }));
+		if (ReactRouter.browserHistory.getCurrentLocation().pathname == pathname) {
+			// set for gNagsLeave to true
+			gNagsLeave = true;
+			// set back oldnags but as a new array so it sets the gNagsLeave // link229439
+			store.dispatch(modPageState(pathname, { nags:[...oldnags] }));
+		}
 
 		// remove it
 		let nags = oldnags.filter(a_nag => a_nag.id !== id);
@@ -518,11 +520,13 @@ const Nags = ReactRedux.connect(
 
 const Nag = ({pathname, nag}) => {
 	let { id, type='default', title, msg, glyphicon, cancel_label, ok_label, onOk } = nag;
-	let onOkWrap = function() {
-		removeNag(pathname, id);
+	let onOkWrap = function(e) {
+		if (!stopClickAndCheck0(e)) return;
 		if (onOk) onOk();
+		removeNag(pathname, id);
 	};
-	let onCancel = function() {
+	let onCancel = function(e) {
+		if (!stopClickAndCheck0(e)) return;
 		removeNag(pathname, id);
 	};
 
@@ -2045,7 +2049,13 @@ const InstallBtn = ReactRedux.connect(
 			command
 		}));
 
+		let { name } = remotecommand.content.locales[gLocale];
+		createNag(ReactRouter.browserHistory.getCurrentLocation().pathname, {title:browser.i18n.getMessage('title_installed'),ok_label:browser.i18n.getMessage('confirm_installed'),cancel_label:browser.i18n.getMessage('dismiss_installed'), msg:browser.i18n.getMessage('message_installed', name), glyphicon:'arrow-down', type:'primary', onOk:this.nagOnOk})
+
 		// setTimeout(()=>alert(browser.i18n.getMessage('message_installed')), 0);
+	},
+	nagOnOk() {
+		loadOldPage('/');
 	},
 	getInstallType() {
 		// returns
