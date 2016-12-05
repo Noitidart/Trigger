@@ -161,6 +161,7 @@ function createModal(pathname, modal) {
 }
 
 let NAG_NEXT_ID = 0;
+const NAG_DURATION_MS = 15 * 1000;
 function createNag(pathname, nag) {
 	/*
 	nag {
@@ -173,7 +174,10 @@ function createNag(pathname, nag) {
 		onOk: function;optional;default:`undefined`
 	}
 	*/
+	gNagsEnter = true;
 	nag.id = NAG_NEXT_ID++;
+	nag.birth_time = Date.now();
+	// nag.death_time = Date.now() + NAG_DURATION_MS; // i use this to determine if should use `fadeap` or `fade` getTrans link1929119
 	let pagestate = store.getState().pages_state[pathname] || {};
 	let oldnags = pagestate.nags || [];
 	let nags = [...oldnags, nag];
@@ -183,12 +187,18 @@ function removeNag(pathname, id) {
 	let pagestate = store.getState().pages_state[pathname] || {};
 	let oldnags = pagestate.nags || [];
 
-	// let ix = oldnags.findIndex(nag => nag.id === id);
-	// if (ix > -1) {
+	let ix = oldnags.findIndex(nag => nag.id === id);
+	if (ix > -1) {
+		// set for gNagsLeave to true
+		gNagsLeave = true;
+		// set back oldnags but as a new array so it sets the gNagsLeave // link229439
+		store.dispatch(modPageState(pathname, { nags:[...oldnags] }));
+
+		// remove it
 		let nags = oldnags.filter(a_nag => a_nag.id !== id);
-		console.error('new nags after remove:', nags);
 		store.dispatch(modPageState(pathname, { nags }));
-	// }
+	}
+	else { console.warn('nag with id was already removed, id:', id) }
 }
 
 // reducer
@@ -390,6 +400,62 @@ let app = Redux.combineReducers({
 }
 */
 
+// START REACT
+// react globals
+const ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
+const gTrans = [
+	createTrans('fadequick', 150, 150, true),
+	createTrans('fade', 300, 300, true),
+	createTrans('modalfade', 300, 300, true)
+];
+initTransTimingStylesheet(); // must go after setting up gTrans
+
+// react helpers
+function createTrans(transitionName, transitionEnterTimeout, transitionLeaveTimeout, transitionAppear=undefined) {
+	// transitionAppear is true else undefined
+	let props = { transitionName, transitionEnterTimeout, transitionLeaveTimeout };
+	if (transitionAppear) {
+		props.transitionAppear = true;
+		props.transitionAppearTimeout = transitionEnterTimeout;
+	}
+	if (transitionEnterTimeout === 0) {
+		delete props.transitionEnterTimeout;
+		props.transitionEnter = false;
+	}
+	if (transitionLeaveTimeout === 0) {
+		delete props.transitionLeaveTimeout;
+		props.transitionLeave = false;
+	}
+	return props;
+}
+
+function getTrans(transitionName, otherProps) {
+	// use this in the React.createElement(ReactCSSTransitionGroup, getTrans(...))
+	for (let trans of gTrans) {
+		if (trans.transitionName == transitionName) {
+			if (otherProps) {
+				return {...trans, ...otherProps};
+			} else {
+				return trans;
+			}
+		}
+	}
+}
+function initTransTimingStylesheet() {
+	let style = document.createElement('style');
+	let rules = [];
+	for (let trans of gTrans) {
+		let { transitionName, transitionEnterTimeout, transitionLeaveTimeout, transitionAppear } = trans;
+		if (transitionAppear) {
+			rules.push('.' + transitionName + '-appear.' + transitionName + '-appear-active,');
+		}
+		rules.push('.' + transitionName + '-enter.' + transitionName + '-enter-active { transition-duration:' + transitionEnterTimeout + 'ms }');
+		rules.push('.' + transitionName + '-leave.' + transitionName + '-leave-active { transition-duration:' + transitionLeaveTimeout + 'ms }');
+	}
+	style.textContent = rules.join('');
+	document.head.appendChild(style);
+}
+
 // REACT COMPONENTS - PRESENTATIONAL
 const Root = () => React.createElement(ReactRedux.Provider, { store },
 	React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
@@ -421,6 +487,8 @@ const App = React.createClass({
 	}
 });
 // start - Nag
+let gNagsEnter = false;
+let gNagsLeave = false;
 const Nags = ReactRedux.connect(
 	function(state, ownProps) {
 		let { pathname } = ownProps; // router
@@ -434,26 +502,36 @@ const Nags = ReactRedux.connect(
 	render() {
 		let { pathname } = this.props;
 		let { nags } = this.props;
-		return React.createElement('div', { className:'nags-backdrop' },
-			nags.map(a_nag => React.createElement(Nag, {...a_nag, pathname, key:a_nag.id}))
+
+		if (gNagsEnter) setTimeout(()=>gNagsEnter=false, 0);
+		if (gNagsLeave) setTimeout(()=> {
+			gNagsLeave = false;
+			store.dispatch(modPageState(pathname, { nags:[...nags] })); // same tactic as link229439
+		}, 0);
+
+		return React.createElement(ReactCSSTransitionGroup, getTrans('fade', { transitionEnter:gNagsEnter, transitionLeave:gNagsLeave, component:'div', className:'nags-backdrop' }), // link1929119
+		// return React.createElement('div', { className:'nags-backdrop' },
+			nags.map(a_nag => React.createElement(Nag, {nag:a_nag, pathname, key:a_nag.id}))
 		);
 	}
 }));
 
-const Nag = ({pathname, id, type='default', title, msg, glyphicon, cancel_label, ok_label, onOk}) => {
+const Nag = ({pathname, nag}) => {
+	let { id, type='default', title, msg, glyphicon, cancel_label, ok_label, onOk } = nag;
 	let onOkWrap = function() {
-		document.getElementById('nag-' + id).classList.remove('in');
-		setTimeout(()=>removeNag(pathname, id), 200);
+		removeNag(pathname, id);
 		if (onOk) onOk();
 	};
 	let onCancel = function() {
-		document.getElementById('nag-' + id).classList.remove('in');
-		setTimeout(()=>removeNag(pathname, id), 200);
+		removeNag(pathname, id);
 	};
 
-	setTimeout(()=>document.getElementById('nag-' + id).classList.add('in'), 200);
+	if (!nag.death_time) {
+		nag.death_time = Date.now() + NAG_DURATION_MS; // link1929119
+		setTimeout(onCancel, NAG_DURATION_MS);
+	}
 
-	return React.createElement('div', { className:'col-md-12 fade', id:'nag-' + id },
+	return React.createElement('div', { className:'col-md-12' },
 		React.createElement('div', { className:'nag nag-' + type },
 			glyphicon && React.createElement('span', { className:'nag-icon' },
 				React.createElement('i', { className:'glyphicon glyphicon-' + glyphicon }),

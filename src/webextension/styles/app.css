@@ -204,3 +204,24 @@ select.btn {
     border-right-color: #d43f3a;
 }
 /* end - Nags */
+
+/* start - react transitions */
+/* fade */
+.fade-enter, .fade-appear { opacity: 0; }
+.fade-enter.fade-enter-active,
+.fade-appear.fade-appear-active { opacity: 1; }
+.fade-leave { opacity: 1; }
+.fade-leave.fade-leave-active { opacity: 0; }
+/* fadequick */
+.fadequick-enter, .fadequick-appear { opacity: 0; }
+.fadequick-enter.fadequick-enter-active,
+.fadequick-appear.fadequick-appear-active { opacity: 1; }
+.fadequick-leave { opacity: 1; }
+.fadequick-leave.fadequick-leave-active { opacity: 0; }
+/* modalfade */
+.modalfade-enter, .modalfade-appear { transform: translate(0, -25%); }
+.modalfade-enter.modalfade-enter-active,
+.modalfade-appear.modalfade-appear-active { transform: translate(0, 0); transition-timing-function: ease-out; }
+.modalfade-leave { transform: translate(0, 0); }
+.modalfade-leave.modalfade-leave-active { transform: translate(0, -25%); transition-timing-function: ease-out; }
+/* end - react transitions */
