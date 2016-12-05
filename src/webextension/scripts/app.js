@@ -163,7 +163,7 @@ function createModal(pathname, modal) {
 		cancel: same as `ok`
 	}
 	*/
-	gNagsEnter = true;
+	gModalEnter = true;
 	modal.id = MODAL_NEXT_ID++;
 	store.dispatch(modPageState(pathname, { modal }));
 }
@@ -581,7 +581,7 @@ const ModalWrap = ReactRedux.connect(
 			React.createElement(ReactCSSTransitionGroup, getTrans('modalfade', { transitionEnter:gModalEnter, transitionLeave:gModalLeave }),
 				modal && React.createElement(Modal, { modal, pathname })
 			),
-			React.createElement(ReactCSSTransitionGroup, getTrans('fadequick', { transitionEnter:gNagsEnter, transitionLeave:gNagsLeave }),
+			React.createElement(ReactCSSTransitionGroup, getTrans('fadequick', { transitionEnter:gModalEnter, transitionLeave:gModalLeave }),
 				modal && React.createElement(ModalBackdrop)
 			)
 		);
