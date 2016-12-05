@@ -160,6 +160,37 @@ function createModal(pathname, modal) {
 	store.dispatch(modPageState(pathname, { modal }));
 }
 
+let NAG_NEXT_ID = 0;
+function createNag(pathname, nag) {
+	/*
+	nag {
+		id: auto gen number,
+		title: string
+		msg: string;optional;default:`undefined`
+		type: string;optinal;enum[default, primary, success, info, warn, danger];default:"default"
+		ok_label: string
+		cancel_label: string
+		onOk: function;optional;default:`undefined`
+	}
+	*/
+	nag.id = NAG_NEXT_ID++;
+	let pagestate = store.getState().pages_state[pathname] || {};
+	let oldnags = pagestate.nags || [];
+	let nags = [...oldnags, nag];
+	store.dispatch(modPageState(pathname, { nags }));
+}
+function removeNag(pathname, id) {
+	let pagestate = store.getState().pages_state[pathname] || {};
+	let oldnags = pagestate.nags || [];
+
+	// let ix = oldnags.findIndex(nag => nag.id === id);
+	// if (ix > -1) {
+		let nags = oldnags.filter(a_nag => a_nag.id !== id);
+		console.error('new nags after remove:', nags);
+		store.dispatch(modPageState(pathname, { nags }));
+	// }
+}
+
 // reducer
 function pages_state(state={}, action) {
 	// NOTE: KEEP each pages object shallow
@@ -383,11 +414,61 @@ const App = React.createClass({
 		return React.createElement('div', { id:'app', className:'app container' },
 			React.createElement(Modal, { pathname }),
 			React.createElement(ModalBackdrop, { pathname }),
+			React.createElement(Nags, { pathname }),
 			React.createElement(Header, { pathname, params }),
 			children
 		);
 	}
 });
+// start - Nag
+const Nags = ReactRedux.connect(
+	function(state, ownProps) {
+		let { pathname } = ownProps; // router
+		let pagestate = state.pages_state[pathname] || {};
+		return {
+			nags: pagestate.nags || []
+		}
+	}
+)(React.createClass({
+	displayName: 'Nags',
+	render() {
+		let { pathname } = this.props;
+		let { nags } = this.props;
+		return React.createElement('div', { className:'nags-backdrop' },
+			nags.map(a_nag => React.createElement(Nag, {...a_nag, pathname, key:a_nag.id}))
+		);
+	}
+}));
+
+const Nag = ({pathname, id, type='default', title, msg, glyphicon, cancel_label, ok_label, onOk}) => {
+	let onOkWrap = function() {
+		document.getElementById('nag-' + id).classList.remove('in');
+		setTimeout(()=>removeNag(pathname, id), 200);
+		if (onOk) onOk();
+	};
+	let onCancel = function() {
+		document.getElementById('nag-' + id).classList.remove('in');
+		setTimeout(()=>removeNag(pathname, id), 200);
+	};
+
+	setTimeout(()=>document.getElementById('nag-' + id).classList.add('in'), 200);
+
+	return React.createElement('div', { className:'col-md-12 fade', id:'nag-' + id },
+		React.createElement('div', { className:'nag nag-' + type },
+			glyphicon && React.createElement('span', { className:'nag-icon' },
+				React.createElement('i', { className:'glyphicon glyphicon-' + glyphicon }),
+			),
+			React.createElement('span', { className:'nag-content' },
+				React.createElement('b', undefined, title),
+				msg && (' ' + msg),
+				React.createElement('button', { className:'btn btn-default', type:'button', onClick:onCancel }, cancel_label),
+				' ',
+				React.createElement('button', { className:'btn btn-primary', type:'button', onClick:onOkWrap }, ok_label),
+			)
+		)
+	);
+};
+// end - Nags
 // start - Modal and ModalBackdrop and ModalContent***
 const Modal = ReactRedux.connect(
 	function(state, ownProps) {
