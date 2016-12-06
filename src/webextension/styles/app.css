@@ -232,6 +232,9 @@ select.btn {
 
 .diff-switch-btn {
 	margin: 3px 3px 0 0;
+	/* z-index needed so it shows over del/ins elements. position needed so z-index works */
+	z-index: 0;
+	position: relative;
 }
 .diff-switch-btn .glyphicon {
 	transform: rotate(90deg);
