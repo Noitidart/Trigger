@@ -50,6 +50,18 @@
 	"confirm_installed": { "message":"Yes, Assign Now" },
 	"dismiss_installed": { "message":"No, Handle Later" },
 
+	"modal_title_upgrade_discard": { "message":"Discard Then Upgrade?" },
+	"modal_title_downgrade_discard": { "message":"Discard Then Downgrade?" },
+	"modal_confirm_downgrade_discard": { "message":"Yes, Discard & Downgrade" },
+	"modal_confirm_upgrade_discard": { "message":"Yes, Discard & Upgrade" },
+	"modal_dismiss_grade_discard": { "message":"No, Keep My Script" },
+	"diff_switch_base_user": { "message":"Base: Your Script" },
+	"diff_switch_base_remote": { "message":"Base: Community Script" },
+	"modal_msg_grade_firstline": { "message":"You currently have a locally modified version installed." },
+	"modal_msg_grade_lastline": { "message":"If you feel your edits are an enhancement, please cancel installation, and share it with the community." },
+	"modal_msg_downgrade_midline": { "message":"The changes in your version are newer then the latest public version." },
+	"modal_msg_upgrade_midline": { "message":"The changes in your version are based on a version that is older than the latest public version." },
+
 	"placeholder_communitysearch": { "message": "Search" },
 	"sort_alpha": { "message": "Alphabetical" },
 	"sort_installs": { "message": "Most Installed" },

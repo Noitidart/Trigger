@@ -629,7 +629,7 @@ const Modal = React.createClass({
 
 		return React.createElement('div', { className:'modal', style:{paddingRight:this.measureScrollbar()+'px'} },
 			React.createElement('div', { className:'modal-dialog' },
-				content_component && React.createElement(window[content_component], { closeModal:this.closeModal }),
+				content_component && React.createElement(window[content_component], { closeModal:this.closeModal, modal }),
 				!content_component && React.createElement('div', { className:'modal-content' },
 					React.createElement('div', { className:'modal-header' },
 						React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.doCancel },
@@ -2063,6 +2063,12 @@ const InstallBtn = ReactRedux.connect(
 		let { remotecommand } = this.props;
 		let { filename } = remotecommand;
 
+		let hotkey;
+		if ([3, 4].includes(installtype)) {
+			let { hotkeys } = this.props;
+			hotkey = hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+		}
+
 		switch (installtype) {
 			case 0:
 					xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=increment&filename=' + filename);
@@ -2070,9 +2076,33 @@ const InstallBtn = ReactRedux.connect(
 			case 1:
 					return;
 			case 3:
+					createModal(
+						ReactRouter.browserHistory.getCurrentLocation().pathname,
+						{
+							content_component: 'ModalContentDiscardConfirm',
+							data: {
+								grade: 'upgrade',
+								compare_base: 'user', // remote or user
+								user_command_code: hotkey.command.content.code.exec,
+								remote_command_code: remotecommand.content.code.exec
+							}
+						}
+					);
 					if (!confirm(browser.i18n.getMessage('confirm_discard_upgrade_warning'))) return;
 				break;
 			case 4:
+					createModal(
+						ReactRouter.browserHistory.getCurrentLocation().pathname,
+						{
+							content_component: 'ModalContentDiscardConfirm',
+							data: {
+								grade: 'downgrade',
+								compare_base: 'user', // remote or user
+								user_command_code: hotkey.command.content.code.exec,
+								remote_command_code: remotecommand.content.code.exec
+							}
+						}
+					);
 					if (!confirm(browser.i18n.getMessage('confirm_discard_downgrade_warning'))) return;
 				break;
 		}
@@ -2138,6 +2168,69 @@ const InstallBtn = ReactRedux.connect(
 		);
 	}
 }));
+
+var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847777
+	displayName: 'ModalContentDiscardConfirm',
+	onCancel(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { closeModal } = this.props;
+		closeModal();
+	},
+	onOk(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { closeModal } = this.props;
+		closeModal();
+	},
+	switchDiff(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { modal:oldmodal } = this.props;
+		let modal = { ...oldmodal };
+		let compare_base = oldmodal.data.compare_base == 'remote' ? 'user' : 'remote';
+		modal.data = { ...oldmodal.data, compare_base };
+
+		store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
+
+	},
+	render() {
+		let { modal } = this.props;
+		let { data } = modal;
+
+		let { grade, compare_base } = data;
+		let compare_to = compare_base == 'remote' ? 'user' : 'remote';
+		let diff_html = {__html: diffString(data[compare_base + '_command_code'], data[compare_to + '_command_code']) };
+		let diff_switch_label = browser.i18n.getMessage('diff_switch_base_' + compare_base);
+
+		return React.createElement('div', { className:'modal-content' },
+			React.createElement('div', { className:'modal-header' },
+				React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+					React.createElement('span', { 'aria-hidden':'true'}, '×'),
+					React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+				),
+				React.createElement('h4', { className:'modal-title' }, browser.i18n.getMessage(`modal_title_${grade}_discard`)),
+			),
+			React.createElement('div', { className:'modal-body' },
+				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_firstline')),
+				React.createElement('br'),
+				React.createElement('p', undefined, browser.i18n.getMessage(`modal_msg_${grade}_midline`)),
+				React.createElement('br'),
+				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_lastline')),
+				React.createElement('br'),
+				React.createElement('button', { className:'diff-switch-btn btn btn-default btn-sm pull-right', onClick:this.switchDiff },
+					React.createElement('span', { className:'glyphicon glyphicon-sort' }),
+					' ' + diff_switch_label
+				),
+				React.createElement('div', { className:'diff', dangerouslySetInnerHTML:diff_html })
+			),
+			React.createElement('div', { className:'modal-footer' },
+				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage(`modal_dismiss_grade_discard`)),
+				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage(`modal_confirm_${grade}_discard`))
+			)
+		);
+	}
+});
 // end - PageCommunity
 const PageInvalid = React.createClass({
 	displayName: 'PageInvalid',

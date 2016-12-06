@@ -229,3 +229,27 @@ select.btn {
 .modalfade-leave { opacity:1; transform:translate(0, 0); }
 .modalfade-leave.modalfade-leave-active { opacity:0; transform:translate(0, -25%); transition-timing-function:ease-out; }
 /* end - react transitions */
+
+.diff-switch-btn {
+	margin: 3px 3px 0 0;
+}
+.diff-switch-btn .glyphicon {
+	transform: rotate(90deg);
+	margin-right: 3px; /* actually not dependent on lang rtl, as all code is in english */
+}
+.diff {
+	white-space: pre;
+	font-family: Courier New;
+	background: #f5f5f5;
+	border-top: 1px solid #bbb;
+	border-bottom: 1px solid #bbb;
+	padding: 8px;
+}
+
+.diff del {
+	background-color: rgb(255, 230, 230);
+}
+
+.diff ins {
+	background-color: rgb(230, 255, 230);
+}
