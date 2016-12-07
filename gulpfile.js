@@ -20,6 +20,7 @@ var gulp_src_ordered = require('gulp-src-ordered-globs'); // http://stackoverflo
 var jshint = require('gulp-jshint');
 var replace = require('gulp-replace');
 var rename = require('gulp-rename');
+var util = require('gulp-util');
 var zip = require('gulp-zip');
 
 // Command line options
@@ -48,7 +49,7 @@ if (clargs.indexOf('--prod') > -1) {
 // txtype?
 var ix_txtype = clargs.indexOf('--txtype');
 if (ix_txtype > -1) {
-	options.type = clargs[++ix_txtype];
+	options.txtype = clargs[++ix_txtype];
 }
 
 // start async-proc9939
@@ -58,29 +59,34 @@ gulp.task('clean', function() {
 });
 
 gulp.task('copy-zip-exe', ['clean'], function() {
-	var dest;
-	var srcwebext;
-	switch (options.txtype) {
-		case 'fxhyb':
-			dest = 'dist/webextension/exe';
-			srcwebext = 'src/webextension';
-			break;
-		default:
-			dest = 'dist/exe';
-			srcwebext = 'src';
-	}
+  if (options.txtype == 'web') {
+    // do nothing
+    return gulp.src('.').pipe(util.noop());
+  } else {
+  	var dest;
+  	var srcwebext;
+  	switch (options.txtype) {
+  		case 'fxhyb':
+  			dest = 'dist/webextension/exe';
+  			srcwebext = 'src/webextension';
+  			break;
+  		default:
+  			dest = 'dist/exe';
+  			srcwebext = 'src';
+  	}
 
-	var addonname = JSON.parse(fs.readFileSync(srcwebext + '/_locales/en-US/messages.json', 'utf8')).addon_name.message;
-	return gulp_src_ordered([
-			'../' + addonname + 'Exe/**/*',
-			'!../' + addonname + 'Exe/**/*.*',
-			'../' + addonname + 'Exe/**/*.exe'
-        ])
-		.pipe(rename(function(file) {
-			file.dirname = file.dirname.split(path.sep)[0];
-		}))
-		.pipe(gulp.dest(dest));
-		// if not fxhyb then replaces executables with zipped version
+  	var addonname = JSON.parse(fs.readFileSync(srcwebext + '/_locales/en-US/messages.json', 'utf8')).addon_name.message;
+  	return gulp_src_ordered([
+  			'../' + addonname + 'Exe/**/*',
+  			'!../' + addonname + 'Exe/**/*.*',
+  			'../' + addonname + 'Exe/**/*.exe'
+          ])
+  		.pipe(rename(function(file) {
+  			file.dirname = file.dirname.split(path.sep)[0];
+  		}))
+  		.pipe(gulp.dest(dest));
+  		// if not fxhyb then replaces executables with zipped version
+    }
 });
 
 gulp.task('copy', ['copy-zip-exe'], function() {
@@ -175,9 +181,14 @@ gulp.task('tx-js', function() {
 });
 
 gulp.task('tx-then-xpi', ['tx-js'], function() {
-	return gulp.src('dist/**/*')
-        .pipe(zip('_dist' + Date.now() + '.xpi', { compress:false }))
-        .pipe(gulp.dest('./'));
+  if (options.txtype == 'web') {
+    // do nothing
+    return gulp.src('.').pipe(util.noop());
+  } else {
+  	return gulp.src('dist/**/*')
+          .pipe(zip('_dist' + Date.now() + '.xpi', { compress:false }))
+          .pipe(gulp.dest('./'));
+  }
 });
 
 gulp.task('xpi', function() {
