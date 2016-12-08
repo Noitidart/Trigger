@@ -11,16 +11,6 @@
 	"addon_version_short": { "message": "v$NUMBER$", "placeholders": { "NUMBER": { "content": "$1" } } },
 	"addon_version_long": { "message": "Version $NUMBER$", "placeholders": { "NUMBER": { "content": "$1" } } },
 
-	"days": { "message": "Sunday Monday Tuesday Wednesday Thursday Friday Saturday" },
-	"shortDays": { "message": "Sun Mon Tue Wed Thu Fri Sat" },
-	"months": { "message": "January February March April May June July August September October November December" },
-	"shortMonths": { "message": "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec" },
-	"AM": { "message": "AM" },
-	"PM": { "message": "PM" },
-	"am": { "message": "am" },
-	"pm": { "message": "pm" },
-	"strftime_format_date1": { "message": "%B %e, %Y", "description":"Example: \"Thu Nov 24 2016 13:12:15 GMT-0800 (Pacific Standard Time)\" becomes \"November 24, 2016\". To figure out the % symbols to use please see here - http://php.net/manual/en/function.strftime.php#refsect1-function.strftime-parameters" },
-
 	"startupfailed_title": { "message": "Trigger - Critical Error" },
 	"startupfailed_body": { "message": "Trigger cannot be used because it failed to startup.\n\n$REASON$", "placeholders": { "REASON":{"content":"$1","example":"one of the entries from the startupfailed_ stuff below"}} },
 	"startupfailed_unknown": { "message": "The error is unknown. Please see \"Browser Console\" for more details. Try restarting the extension to fix this problem." },

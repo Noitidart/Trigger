@@ -13,20 +13,9 @@ async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
 	document.title = browser.i18n.getMessage('addon_name');
 
-	strftime = strftime.localize({
-        days: browser.i18n.getMessage('days').split(' '),
-        shortDays: browser.i18n.getMessage('shortDays').split(' '),
-        months: browser.i18n.getMessage('months').split(' '),
-        shortMonths: browser.i18n.getMessage('shortMonths').split(' '),
-        AM: browser.i18n.getMessage('AM'),
-        PM: browser.i18n.getMessage('PM'),
-        am: browser.i18n.getMessage('am'),
-        pm: browser.i18n.getMessage('pm')
-    });
-
 	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
-	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val))) || 'en-US';
-	gLocale = 'en-US'; // for now, as i havent wrote up locales support
+	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val)));
+	gUserLocales = (await new Promise(resolve => callInBackground('getUserPreferredLocales', undefined, val=>resolve(val)))).map(el => el.replace(/_/g, '-'));
 
 	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant, nub:1 }, val => resolve(val)) );
 
@@ -71,7 +60,8 @@ let hydrant = {
 	}
 };
 
-let gLocale; // the locale in my ext, that is closest to the users locale
+let gLocale; // the locale in my _locales dir that the browser is showing my strings in
+let gUserLocales; // user prefered locales - array
 
 const GROUPS = [ // command groups
 	{ id:0, text:browser.i18n.getMessage('group_nocategory') }, // must keep this as first element
@@ -2026,7 +2016,7 @@ const RemoteCommand = ReactRedux.connect(
 					' ',
 					React.createElement('span', { title:browser.i18n.getMessage('last_updated'), style:{margin:'0 7px'} },
 						React.createElement('span', { className:'glyphicon glyphicon-calendar' }),
-						' ' + strftime(browser.i18n.getMessage('strftime_format_date1'), date)
+						' ' + (new Intl.DateTimeFormat(gUserLocales, { month:'long', day:'numeric', year:'numeric' }).format(date))
 					)
 				),
 				React.createElement('p', undefined,
