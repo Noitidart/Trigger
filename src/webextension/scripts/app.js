@@ -2045,7 +2045,7 @@ const InstallBtn = ReactRedux.connect(
 	}
 )(React.createClass({
 	displayName: 'InstallBtn',
-	onClick(e) {
+	onClick(e, isConfirm) {
 		if (!stopClickAndCheck0(e)) return;
 
 		let installtype = this.getInstallType();
@@ -2059,6 +2059,8 @@ const InstallBtn = ReactRedux.connect(
 			hotkey = hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
 		}
 
+    let message_key = 'installed';
+    let glyphicon = 'plus';
 		switch (installtype) {
 			case 0:
 					xhrPromise('https://trigger-community.sundayschoolonline.org/installs.php?act=increment&filename=' + filename);
@@ -2066,34 +2068,50 @@ const InstallBtn = ReactRedux.connect(
 			case 1:
 					return;
 			case 3:
-					createModal(
-						ReactRouter.browserHistory.getCurrentLocation().pathname,
-						{
-							content_component: 'ModalContentDiscardConfirm',
-							data: {
-								grade: 'upgrade',
-								compare_base: 'user', // remote or user
-								user_command_code: hotkey.command.content.code.exec,
-								remote_command_code: remotecommand.content.code.exec
-							}
-						}
-					);
-					if (!confirm(browser.i18n.getMessage('confirm_discard_upgrade_warning'))) return;
+          if (!isConfirm) {
+  					createModal(
+  						ReactRouter.browserHistory.getCurrentLocation().pathname,
+  						{
+  							content_component: 'ModalContentDiscardConfirm',
+  							data: {
+  								grade: 'upgrade',
+  								compare_base: 'user', // remote or user
+  								user_command_code: hotkey.command.content.code.exec,
+  								remote_command_code: remotecommand.content.code.exec,
+                  onConfirm: this.onClick
+  							}
+  						}
+  					);
+
+            return;
+          }
+
+          message_key = 'upgraded';
+          glyphicon = 'arrow-up';
+
 				break;
 			case 4:
-					createModal(
-						ReactRouter.browserHistory.getCurrentLocation().pathname,
-						{
-							content_component: 'ModalContentDiscardConfirm',
-							data: {
-								grade: 'downgrade',
-								compare_base: 'user', // remote or user
-								user_command_code: hotkey.command.content.code.exec,
-								remote_command_code: remotecommand.content.code.exec
-							}
-						}
-					);
-					if (!confirm(browser.i18n.getMessage('confirm_discard_downgrade_warning'))) return;
+          if (!isConfirm) {
+  					createModal(
+  						ReactRouter.browserHistory.getCurrentLocation().pathname,
+  						{
+  							content_component: 'ModalContentDiscardConfirm',
+  							data: {
+  								grade: 'downgrade',
+  								compare_base: 'user', // remote or user
+  								user_command_code: hotkey.command.content.code.exec,
+  								remote_command_code: remotecommand.content.code.exec,
+                  onConfirm: this.onClick
+  							}
+  						}
+  					);
+
+            return;
+          }
+
+          message_key = 'downgraded';
+          glyphicon = 'arrow-down';
+
 				break;
 		}
 
@@ -2102,14 +2120,23 @@ const InstallBtn = ReactRedux.connect(
 			if (key[0] != '_') command[key] = value;
 		command = JSON.parse(JSON.stringify(command));
 
-		store.dispatch(addHotkey({
-			combo: null,
-			enabled: false,
-			command
-		}));
-
+    if ([3, 4].includes(installtype)) {
+      let { combo, enabled } = hotkey;
+			store.dispatch(editHotkey({
+				combo,
+				enabled,
+				command
+			}));
+    } else {
+  		store.dispatch(addHotkey({
+  			combo: null,
+  			enabled: false,
+  			command
+  		}));
+    }
 		let { name } = remotecommand.content.locales[gLocale];
-		createNag(ReactRouter.browserHistory.getCurrentLocation().pathname, {title:browser.i18n.getMessage('title_installed'),ok_label:browser.i18n.getMessage('confirm_installed'),cancel_label:browser.i18n.getMessage('dismiss_installed'), msg:browser.i18n.getMessage('message_installed', name), glyphicon:'arrow-down', type:'primary', onOk:this.nagOnOk})
+
+		createNag(ReactRouter.browserHistory.getCurrentLocation().pathname, {title:browser.i18n.getMessage('title_installed'),ok_label:browser.i18n.getMessage('confirm_installed'),cancel_label:browser.i18n.getMessage('dismiss_installed'), msg:browser.i18n.getMessage('message_' + message_key, name), glyphicon, type:'primary', onOk:this.nagOnOk})
 
 		// setTimeout(()=>alert(browser.i18n.getMessage('message_installed')), 0);
 	},
@@ -2170,8 +2197,9 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 	onOk(e) {
 		if (!stopClickAndCheck0(e)) return;
 
-		let { closeModal } = this.props;
+		let { closeModal, modal:{data:{onConfirm}} } = this.props;
 		closeModal();
+    onConfirm(undefined, true);
 	},
 	switchDiff(e) {
 		if (!stopClickAndCheck0(e)) return;
