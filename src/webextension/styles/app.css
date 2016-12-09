@@ -256,3 +256,33 @@ select.btn {
 .diff ins {
 	background-color: rgb(230, 255, 230);
 }
+
+/* start - buy_field */
+#buy_field label {
+  margin-top: 5px;
+}
+#buy_field label:first-of-type {
+  margin-right: 5px; /* TODO: rtl point */
+}
+#buy_field .input-group {
+  width: 11em;
+}
+#buy_field input {
+  text-align: center;
+}
+#buy_field button .glyphicon {
+  top: -1px;
+  font-size: 0.7em;
+}
+#buy_field.form-group {
+  margin-bottom: 0;
+}
+#buy_field .help-block {
+  margin-bottom: 0;
+}
+#buy_field .form-control-feedback {
+  left: 0;
+  right: auto;
+  top: 1px;
+}
+/* end - buy_field */

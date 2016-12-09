@@ -403,58 +403,12 @@ let app = Redux.combineReducers({
 // START REACT
 // react globals
 const ReactCSSTransitionGroup = React.addons.CSSTransitionGroup;
-const gTrans = [
+var gTrans = [ // needs to be var, so its accessible to dom-react.js
 	createTrans('fadequick', 150, 150, true),
 	createTrans('fade', 300, 300, true),
 	createTrans('modalfade', 300, 300, true)
 ];
 initTransTimingStylesheet(); // must go after setting up gTrans
-
-// react helpers
-function createTrans(transitionName, transitionEnterTimeout, transitionLeaveTimeout, transitionAppear=undefined) {
-	// transitionAppear is true else undefined
-	let props = { transitionName, transitionEnterTimeout, transitionLeaveTimeout };
-	if (transitionAppear) {
-		props.transitionAppear = true;
-		props.transitionAppearTimeout = transitionEnterTimeout;
-	}
-	if (transitionEnterTimeout === 0) {
-		props.transitionEnter = false;
-		delete props.transitionEnterTimeout;
-	}
-	if (transitionLeaveTimeout === 0) {
-		props.transitionLeave = false;
-		delete props.transitionLeaveTimeout;
-	}
-	return props;
-}
-
-function getTrans(transitionName, otherProps={}) {
-	// use this in the React.createElement(ReactCSSTransitionGroup, getTrans(...))
-	for (let trans of gTrans) {
-		if (trans.transitionName == transitionName) {
-			if (otherProps) {
-				return {...trans, ...otherProps};
-			} else {
-				return trans;
-			}
-		}
-	}
-}
-function initTransTimingStylesheet() {
-	let style = document.createElement('style');
-	let rules = [];
-	for (let trans of gTrans) {
-		let { transitionName, transitionEnterTimeout, transitionLeaveTimeout, transitionAppear } = trans;
-		if (transitionAppear) {
-			rules.push('.' + transitionName + '-appear.' + transitionName + '-appear-active,');
-		}
-		rules.push('.' + transitionName + '-enter.' + transitionName + '-enter-active { transition-duration:' + transitionEnterTimeout + 'ms }');
-		rules.push('.' + transitionName + '-leave.' + transitionName + '-leave-active { transition-duration:' + transitionLeaveTimeout + 'ms }');
-	}
-	style.textContent = rules.join('');
-	document.head.appendChild(style);
-}
 
 // REACT COMPONENTS - PRESENTATIONAL
 const Root = () => React.createElement(ReactRedux.Provider, { store },
@@ -661,7 +615,19 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 		let { closeModal } = this.props;
 		closeModal();
 	},
+  setBuyQty(aBuyQty) {
+    // aBuyQty must be number
+
+    let { modal:oldmodal } = this.props;
+    let modal = { ...oldmodal, data: { ...oldmodal.data,
+        buyqty: aBuyQty
+    }};
+		store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
+  },
 	render() {
+    let { modal } = this.props;
+    let { data:{buyqty} } = modal;
+
 		return React.createElement('div', { className:'modal-content' },
 			React.createElement('div', { className:'modal-header' },
 				React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
@@ -671,15 +637,56 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 				React.createElement('h4', { className:'modal-title' }, browser.i18n.getMessage('title_maxhotkeysenabled')),
 			),
 			React.createElement('div', { className:'modal-body' },
-				React.createElement('p', undefined, 'msg')
+				React.createElement('p', undefined,
+          'You have reached your max enabled hotkeys limit of ',
+          React.createElement('b', undefined, MAX_HOTKEY_COUNT, ' hotkeys'),
+          '.'
+        ),
+				React.createElement('p', undefined, 'You can purchase more for $1 USD each.'),
+        React.createElement(InputNumber, { component:InputNumberBuyForm, buyqty, cursor:'ns-resize', min:1, max:12, dispatcher:this.setBuyQty, defaultValue:buyqty })
 			),
 			React.createElement('div', { className:'modal-footer' },
 				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('dismiss_maxhotkeysenabled')),
-				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage('confirm_maxhotkeysenabled'))
+				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage('confirm_maxhotkeysenabled' + (buyqty > 1 ? '_plural' : ''), buyqty))
 			)
 		);
 	}
 });
+const InputNumberBuyForm = React.createClass({
+  displayName: 'InputNumberBuyForm',
+  onMinus(e) {
+    if (!stopClickAndCheck0(e)) return;
+    let { crementBy } = this.props;
+    crementBy(-0);
+  },
+  onPlus(e) {
+    if (!stopClickAndCheck0(e)) return;
+    let { crementBy } = this.props;
+    crementBy(0);
+  },
+  render() {
+    let { domprops_mouseable, domprops_text, isvalid, ismaxish, isminish, crementBy } = this.props; // InputNumber specific props
+    let { buyqty } = this.props; // props that skip InputNumber and are meant to be sent straght to here
+
+    return React.createElement('div', { id:'buy_field', className:'form-group' + (!isvalid ? ' has-error' : '') },
+      React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, 'Quantity: '),
+      React.createElement('b', { className:'pull-right', ...domprops_mouseable }, 'Total Price: $', buyqty, '.00'),
+      React.createElement('div', { className:'input-group' },
+        React.createElement('input', { className:'form-control', type:'text', ref:'input', ...domprops_text }),
+        !isvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
+        React.createElement('div', { className:'input-group-btn' },
+          React.createElement('button', { className:'btn btn-default', type:'button', onClick:this.onMinus, disabled:isminish },
+            React.createElement('span', { className:'glyphicon glyphicon-minus'})
+          ),
+          React.createElement('button', { className:'btn btn-default', type:'button', onClick:this.onPlus, disabled:ismaxish },
+            React.createElement('span', { className:'glyphicon glyphicon-plus' })
+          )
+        )
+      ),
+      !isvalid && React.createElement('small', { className:'help-block' }, 'Must be a number between 1 and 12')
+    );
+  }
+})
 // end - Modal and ModalBackdrop
 // start - Header
 const Header = React.createClass({
@@ -1076,7 +1083,10 @@ const Hotkey = ReactRedux.connect(
 			createModal(
 				ReactRouter.browserHistory.getCurrentLocation().pathname,
 				{
-					content_component: 'ModalContentComponentBuy'
+					content_component: 'ModalContentComponentBuy',
+          data: {
+            buyqty: 1
+          }
 					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
 					// template: 'Buy',
 					// body: 'Buy',

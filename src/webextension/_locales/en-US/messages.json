@@ -97,8 +97,8 @@
 
 	"message_maxhotkeysenabled": { "message":"blah blah blah" },
 	"title_maxhotkeysenabled": { "message":"Purchase Enabled Hotkey?" },
-	"confirm_maxhotkeysenabled": { "message":"Yes, Buy 1 More Enabled Hotkey", "placeholders": {"MAX_HOTKEY_COUNT":{"content":"$1"}}  },
-	"confirm_maxhotkeysenabled_plural": { "message":"Yes, Buy $BUY_QTY$ More Enabled Hotkeys", "placeholders": {"MAX_HOTKEY_COUNT":{"content":"$1"}}  },
+	"confirm_maxhotkeysenabled": { "message":"Yes, Buy 1 More Enabled Hotkey" },
+	"confirm_maxhotkeysenabled_plural": { "message":"Yes, Buy $BUY_QTY$ More Enabled Hotkeys", "placeholders": {"BUY_QTY":{"content":"$1"}} },
 	"dismiss_maxhotkeysenabled": { "message":"No, Don't Enable" },
 
 	"NO_HOTKEY": { "message": "NO HOTKEY SET" },
