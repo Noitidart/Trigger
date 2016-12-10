@@ -657,7 +657,7 @@ const InputNumberBuyForm = React.createClass({
   showTimedCrementOverlay() {
     // needed because once hit ismaxish or isminish the buttons get disabled, which dont trigger the onMouseUp events on it, or even on the body as that is under it. needed something over it.
     let overlay = this.overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed; height:100vh; width:100vw; top:0; left:0; z-index:2000';
+    overlay.style.cssText = 'position:fixed; height:100vh; width:100vw; top:0; left:0; z-index:2000;';
     document.documentElement.appendChild(overlay);
     overlay.addEventListener('mouseup', this.removeTimedCrementOverlay, false);
   },
@@ -680,10 +680,11 @@ const InputNumberBuyForm = React.createClass({
     timedCrement(0);
   },
   render() {
-    let { domprops_mouseable, domprops_text, isvalid, ismaxish, isminish, crementBy } = this.props; // InputNumber specific props
+    let { children, domprops_mouseable, domprops_text, isvalid, ismaxish, isminish, crementBy } = this.props; // InputNumber specific props
     let { buyqty } = this.props; // props that skip InputNumber and are meant to be sent straght to here
 
     return React.createElement('div', { id:'buy_field', className:'form-group' + (!isvalid ? ' has-error' : '') },
+      children, // required by InputNumber crossfile-link92828222
       React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, 'Quantity: '),
       React.createElement('b', { className:'pull-right', ...domprops_mouseable }, 'Total Price: $', buyqty, '.00'),
       React.createElement('div', { className:'input-group' },
