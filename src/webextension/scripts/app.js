@@ -680,16 +680,16 @@ const InputNumberBuyForm = React.createClass({
     timedCrement(0);
   },
   render() {
-    let { children, domprops_mouseable, domprops_text, isvalid, ismaxish, isminish, crementBy } = this.props; // InputNumber specific props
+    let { children, domprops_mouseable, domprops_text, isinvalid, ismaxish, isminish } = this.props; // InputNumber specific props
     let { buyqty } = this.props; // props that skip InputNumber and are meant to be sent straght to here
 
-    return React.createElement('div', { id:'buy_field', className:'form-group' + (!isvalid ? ' has-error' : '') },
+    return React.createElement('div', { id:'buy_field', className:'form-group' + (isinvalid ? ' has-error' : '') },
       children, // required by InputNumber crossfile-link92828222
       React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, 'Quantity: '),
       React.createElement('b', { className:'pull-right', ...domprops_mouseable }, 'Total Price: $', buyqty, '.00'),
       React.createElement('div', { className:'input-group' },
-        React.createElement('input', { className:'form-control', type:'text', ref:'input', ...domprops_text }),
-        !isvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
+        React.createElement('input', { className:'form-control', type:'text', ...domprops_text }),
+        isinvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
         React.createElement('div', { className:'input-group-btn' },
           React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onMinus, disabled:isminish },
             React.createElement('span', { className:'glyphicon glyphicon-minus'})
@@ -699,7 +699,7 @@ const InputNumberBuyForm = React.createClass({
           )
         )
       ),
-      !isvalid && React.createElement('small', { className:'help-block' }, 'Must be a number between 1 and 12')
+      isinvalid && React.createElement('small', { className:'help-block' }, 'Must be a number between 1 and 12')
     );
   }
 })
