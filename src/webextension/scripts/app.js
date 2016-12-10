@@ -601,6 +601,43 @@ const ModalBackdrop = React.createClass({
 	}
 });
 
+var ModalContentComponentEnterCode = React.createClass({ // need var due to link8847777
+	displayName: 'ModalContentComponentEnterCode',
+	onCancel(e) {
+		if (!stopClickAndCheck0(e)) return;
+		let { closeModal } = this.props;
+		closeModal();
+	},
+	onOk(e) {
+		if (!stopClickAndCheck0(e)) return;
+		let { closeModal } = this.props;
+		closeModal();
+	},
+  componentDidMount() {
+    document.getElementById('entered_code').focus();
+  },
+	render() {
+    let { modal } = this.props;
+
+		return React.createElement('div', { className:'modal-content' },
+			React.createElement('div', { className:'modal-header' },
+				React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+					React.createElement('span', { 'aria-hidden':'true'}, '×'),
+					React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+				),
+				React.createElement('h4', { className:'modal-title' }, browser.i18n.getMessage('title_entercode')),
+			),
+			React.createElement('div', { className:'modal-body' },
+				React.createElement('p', undefined, browser.i18n.getMessage('sentence1_entercode')),
+        React.createElement('input', { className:'form-control', type:'text', id:'entered_code' }),
+			),
+			React.createElement('div', { className:'modal-footer' },
+				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('dismiss_entercode')),
+				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage('confirm_entercode'))
+			)
+		);
+	}
+});
 var ModalContentComponentBuy = React.createClass({ // need var due to link8847777
 	displayName: 'ModalContentComponentBuy',
 	onCancel(e) {
@@ -614,7 +651,14 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 
 		let { closeModal } = this.props;
 		closeModal();
+    this.gotoEnter();
 	},
+  gotoEnter(e) {
+    if (!stopClickAndCheck0(e)) return;
+		let { closeModal } = this.props;
+		closeModal();
+    setTimeout( ()=>createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode' }), 300 );
+  },
   setBuyQty(aBuyQty) {
     // aBuyQty must be number
 
@@ -638,14 +682,13 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 			),
 			React.createElement('div', { className:'modal-body' },
 				React.createElement('p', undefined,
-          'You have reached your max enabled hotkeys limit of ',
-          React.createElement('b', undefined, MAX_HOTKEY_COUNT, ' hotkeys'),
-          '.'
+          ...browser.i18n.getMessage('sentence1_maxhotkeysenabled', MAX_HOTKEY_COUNT).split(/<\/?b>/i).map((el, i)=> i % 2 ? React.createElement('b', undefined, el) : el).filter(el => typeof(el) != 'string' ? true : el.length)
         ),
-				React.createElement('p', undefined, 'You can purchase more for $1 USD each.'),
+				React.createElement('p', undefined, browser.i18n.getMessage('sentence2_maxhotkeysenabled').replace('%DOLLA%', '$')),
         React.createElement(InputNumber, { component:InputNumberBuyForm, buyqty, cursor:'ns-resize', min:1, max:12, dispatcher:this.setBuyQty, defaultValue:buyqty })
 			),
 			React.createElement('div', { className:'modal-footer' },
+				React.createElement('button', { className:'btn btn-link pull-left', onClick:this.gotoEnter }, browser.i18n.getMessage('havecode_maxhotkeysenabled')),
 				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('dismiss_maxhotkeysenabled')),
 				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage('confirm_maxhotkeysenabled' + (buyqty > 1 ? '_plural' : ''), buyqty))
 			)
@@ -685,8 +728,8 @@ const InputNumberBuyForm = React.createClass({
 
     return React.createElement('div', { id:'buy_field', className:'form-group' + (isinvalid ? ' has-error' : '') },
       children, // required by InputNumber crossfile-link92828222
-      React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, 'Quantity: '),
-      React.createElement('b', { className:'pull-right', ...domprops_mouseable }, 'Total Price: $', buyqty, '.00'),
+      React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, browser.i18n.getMessage('quantity_maxhotkeysenabled')),
+      React.createElement('b', { className:'pull-right', ...domprops_mouseable }, browser.i18n.getMessage('totalprice_maxhotkeysenabled', buyqty).replace('%DOLLA%', '$')),
       React.createElement('div', { className:'input-group' },
         React.createElement('input', { className:'form-control', type:'text', ...domprops_text }),
         isinvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),

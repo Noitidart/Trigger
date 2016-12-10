@@ -95,11 +95,20 @@
 	"tooltip_cancelchangehotkey": { "message": "Cancel (Esc)" },
 	"tooltip_sethotkey": { "message": "Set Hotkey" },
 
-	"message_maxhotkeysenabled": { "message":"blah blah blah" },
+	"sentence1_maxhotkeysenabled": { "message":"You have reached your max enabled hotkeys limit of <B>$MAX_HOTKEY_COUNT$ hotkeys</B>.", "placeholders": {"MAX_HOTKEY_COUNT":{"content":"$1"}} },
+	"sentence2_maxhotkeysenabled": { "message":"You can purchase more for %DOLLA%1 USD each." },
+	"quantity_maxhotkeysenabled": { "message":"Quantity: " },
+	"totalprice_maxhotkeysenabled": { "message":"Total Price: %DOLLA%$BUY_QTY$.00", "placeholders": {"BUY_QTY":{"content":"$1"}} },
 	"title_maxhotkeysenabled": { "message":"Purchase Enabled Hotkey?" },
 	"confirm_maxhotkeysenabled": { "message":"Yes, Buy 1 More Enabled Hotkey" },
 	"confirm_maxhotkeysenabled_plural": { "message":"Yes, Buy $BUY_QTY$ More Enabled Hotkeys", "placeholders": {"BUY_QTY":{"content":"$1"}} },
 	"dismiss_maxhotkeysenabled": { "message":"No, Don't Enable" },
+  "havecode_maxhotkeysenabled": { "message":"Already have a code?" },
+
+  "title_entercode": { "message":"Enable Hotkeys" },
+  "dismiss_entercode": { "message":"Cancel" },
+  "confirm_entercode": { "message":"Enable Now" },
+  "sentence1_entercode": { "message":"Enter the code given to you on purchase:" },
 
 	"NO_HOTKEY": { "message": "NO HOTKEY SET" },
 	"hotkey_changing": { "message": "Press any key..." },
