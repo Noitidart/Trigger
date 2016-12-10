@@ -654,15 +654,30 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 });
 const InputNumberBuyForm = React.createClass({
   displayName: 'InputNumberBuyForm',
+  showTimedCrementOverlay() {
+    // needed because once hit ismaxish or isminish the buttons get disabled, which dont trigger the onMouseUp events on it, or even on the body as that is under it. needed something over it.
+    let overlay = this.overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed; height:100vh; width:100vw; top:0; left:0; z-index:2000';
+    document.documentElement.appendChild(overlay);
+    overlay.addEventListener('mouseup', this.removeTimedCrementOverlay, false);
+  },
+  removeTimedCrementOverlay() {
+    let { timedCrementStop } = this.props;
+    timedCrementStop();
+    this.overlay.parentNode.removeChild(this.overlay);
+    delete this.overlay;
+  },
   onMinus(e) {
-    if (!stopClickAndCheck0(e)) return;
-    let { crementBy } = this.props;
-    crementBy(-0);
+    if (!allowDownAndCheck0(e)) return;
+    let { timedCrement } = this.props;
+    this.showTimedCrementOverlay();
+    timedCrement(-0);
   },
   onPlus(e) {
-    if (!stopClickAndCheck0(e)) return;
-    let { crementBy } = this.props;
-    crementBy(0);
+    if (!allowDownAndCheck0(e)) return;
+    let { timedCrement } = this.props;
+    this.showTimedCrementOverlay();
+    timedCrement(0);
   },
   render() {
     let { domprops_mouseable, domprops_text, isvalid, ismaxish, isminish, crementBy } = this.props; // InputNumber specific props
@@ -675,10 +690,10 @@ const InputNumberBuyForm = React.createClass({
         React.createElement('input', { className:'form-control', type:'text', ref:'input', ...domprops_text }),
         !isvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
         React.createElement('div', { className:'input-group-btn' },
-          React.createElement('button', { className:'btn btn-default', type:'button', onClick:this.onMinus, disabled:isminish },
+          React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onMinus, disabled:isminish },
             React.createElement('span', { className:'glyphicon glyphicon-minus'})
           ),
-          React.createElement('button', { className:'btn btn-default', type:'button', onClick:this.onPlus, disabled:ismaxish },
+          React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onPlus, disabled:ismaxish },
             React.createElement('span', { className:'glyphicon glyphicon-plus' })
           )
         )
@@ -2309,5 +2324,13 @@ stopClickAndCheck0 = function(e) {
 	// setTimeout(()=>target.blur());
 	setTimeout(()=>document.activeElement.blur(), 0);
 	return origStopClickAndCheck0(e);
+}
+function allowDownAndCheck0(e) {
+	if (!e) return true;
+
+	// e.stopPropagation();
+	// e.preventDefault();
+  setTimeout(()=>document.activeElement.blur(), 0);
+	return e.button === 0 ? true : false;
 }
 // end - specific helpers

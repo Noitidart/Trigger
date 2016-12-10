@@ -258,11 +258,12 @@ select.btn {
 }
 
 /* start - buy_field */
-#buy_field label {
-  margin-top: 5px;
+#buy_field label,
+#buy_field b {
+  padding: 5px 0 9px 0;
 }
 #buy_field label:first-of-type {
-  margin-right: 5px; /* TODO: rtl point */
+  padding-right: 7px;
 }
 #buy_field .input-group {
   width: 11em;
@@ -271,8 +272,9 @@ select.btn {
   text-align: center;
 }
 #buy_field button .glyphicon {
-  top: -1px;
+  top: 0;
   font-size: 0.7em;
+  margin-bottom: 6px;
 }
 #buy_field.form-group {
   margin-bottom: 0;
