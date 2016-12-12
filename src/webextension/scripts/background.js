@@ -487,21 +487,21 @@ browser.webRequest.onBeforeRequest.addListener(oauthWebRequestListener, { urls:[
 browser.webNavigation.onCommitted.addListener(oauthWebRequestListener); // when offline it works which is interesting. because when online it seems the request goes through in the back // catches when user goes to reauth page but is redirected immediately because they already had approved the app in the past
 // end - oauth stuff
 
-// start - paypal in frame
-function paypalWebRequestListener(detail) {
-	let { url, tabId:tabid, responseHeaders:headers } = detail;
-
-  let has_xframeoptions = headers.findIndex( ({name}) => name == 'x-frame-options' );
-  if (has_xframeoptions > -1) {
-    let newheaders = headers.splice(has_xframeoptions, 1);
-    console.error('yes this paypal one had x-frame-options so lets remove it', 'url:', url, 'headers:', headers);
-    console.error('newheaders:', newheaders);
-    // return { responseHeaders:[{name:'x-frame-options', value:undefined}] };
-    return { responseHeaders:newheaders };
-  }
-}
-browser.webRequest.onHeadersReceived.addListener(paypalWebRequestListener, { urls:['https://www.sandbox.paypal.com/*'] }, ['blocking', 'responseHeaders']);
-// end - paypal in frame
+// // start - paypal in frame
+// function paypalWebRequestListener(detail) {
+// 	let { url, tabId:tabid, responseHeaders:headers } = detail;
+//
+//   let has_xframeoptions = headers.findIndex( ({name}) => name == 'x-frame-options' );
+//   if (has_xframeoptions > -1) {
+//     let newheaders = headers.splice(has_xframeoptions, 1);
+//     console.error('yes this paypal one had x-frame-options so lets remove it', 'url:', url, 'headers:', headers);
+//     console.error('newheaders:', newheaders);
+//     // return { responseHeaders:[{name:'x-frame-options', value:undefined}] };
+//     return { responseHeaders:newheaders };
+//   }
+// }
+// browser.webRequest.onHeadersReceived.addListener(paypalWebRequestListener, { urls:['https://www.sandbox.paypal.com/*'] }, ['blocking', 'responseHeaders']);
+// // end - paypal in frame
 
 // // about page
 // var aboutPageTabIds = {}
@@ -559,12 +559,29 @@ function browserActionSetTitle(title) {
 function browserActionSetBadgeText(text) {
 
 }
-function addTab(url) {
-	if (chrome.tabs && chrome.tabs.create) {
-		chrome.tabs.create({ url:url });
+async function addTab(url) {
+  // url is either string or an object
+  let opts = typeof(url) == 'object' ? url : { url };
+  url = typeof(url) == 'object' ? url.url : url;
+
+  if ('index_offset' in opts) {
+    // dont provide `-index_offset` key if you dont want it to be relative to current
+    // will position the tab at the current tabs index plus this value
+    let { index_offset } = opts;
+    delete opts.index_offset;
+    let tabs = await browser.tabs.query({currentWindow:true, active:true});
+    if (tabs && tabs.length) {
+      let curtab = tabs[0];
+      console.log('curtab:', curtab);
+      opts.index = curtab.index + index_offset;
+    }
+  }
+
+	if (browser.tabs && browser.tabs.create) {
+		browser.tabs.create(opts);
 	} else {
-		// its android
-		callInBootstrap('addTab', { url:url });
+		// its android with no support for tabs
+		callInBootstrap('addTab', { url });
 	}
 }
 function reuseElseAddTab(url) {

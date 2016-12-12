@@ -678,9 +678,13 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
       if (status !== 200) {
         throw xpppinit;
       } else {
-        closeModal();
-        await promiseTimeout(300);
-        this.gotoPaypalFrame(response.approval_url);
+        // no need to close and wait, as `gotoEnter` will handle that
+        // closeModal();
+        // await promiseTimeout(300);
+        // this.gotoPaypalFrame(response.approval_url);
+        let url = response.approval_url;
+        callInBackground('addTab', {url, index_offset:1});
+        this.gotoEnter();
       }
     } catch(xperr) {
 
@@ -724,11 +728,12 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
       cancel: null
     });
   },
-  gotoEnter(e) {
+  async gotoEnter(e) {
     if (!stopClickAndCheck0(e)) return;
 		let { closeModal } = this.props;
 		closeModal();
-    setTimeout( ()=>createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode' }), 300 );
+    await promiseTimeout(300);
+    createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode' })
   },
   setBuyQty(aBuyQty) {
     // aBuyQty must be number
