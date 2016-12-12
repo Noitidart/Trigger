@@ -443,10 +443,11 @@ async function oauthAuthorized({ serviceid, href, json }) {
 	}
 }
 
+const OAUTH_REDIRURL_START = 'http://127.0.0.1/' + nub.self.chromemanifestkey + '_';
 function oauthWebRequestListener(detail) {
 	let { url, tabId:tabid, responseHeaders } = detail;
 
-	if (!url.startsWith('http://127.0.0.1/' + nub.self.chromemanifestkey + '_')) return;
+	if (!url.startsWith(OAUTH_REDIRURL_START)) return;
 
 	console.error('oauthWebRequestListener, url:', url, 'detail:', detail);
 
@@ -460,20 +461,20 @@ function oauthWebRequestListener(detail) {
 
 		tabid = (tabid === -1 || tabid === undefined || tabid === null) ? null : tabid;
 
-		let proc; // processing, endied, approved, error (if error i can provide parameter `msg`)
+		let act; // processing, denied, approved, error (if error i can provide parameter `msg`)
 		switch(serviceid) {
 			case 'github':
-					proc = 'processing';
+					act = 'approved';
 				break;
 			case 'twitter':
-					if (url.includes('denied=')) proc = 'denied';
-					else proc = 'processing'
+					if (url.includes('denied=')) act = 'denied';
+					else act = 'processing';
 				break;
 			default:
-				if (url.includes('error=access_denied')) proc = 'denied';
-				else proc = 'approved';
+				if (url.includes('error=access_denied')) act = 'denied';
+				else act = 'approved';
 		}
-		let redirurl = nub.path.pages + 'auth.html?serviceid=' + serviceid + '&proc=' + proc;
+		let redirurl = nub.path.pages + 'app.html?page=auth&serviceid=' + serviceid + '&act=' + act;
 		console.log('redirurl:', redirurl);
 		if (tabid) setTimeout(()=>chrome.tabs.update(tabid, { url:redirurl }), 0); // needed for `onCommitted` - TODO: support android for controling load in this tab
 		return { cancel:true, redirectUrl:redirurl  };
@@ -482,10 +483,33 @@ function oauthWebRequestListener(detail) {
 
 }
 
-browser.webRequest.onBeforeRequest.addListener(oauthWebRequestListener, { urls:['http://127.0.0.1/' + nub.self.chromemanifestkey + '_*'] }, ['blocking']); // catches when after user clicks on "Approve" it catches that redirect
+browser.webRequest.onBeforeRequest.addListener(oauthWebRequestListener, { urls:[OAUTH_REDIRURL_START + '*'] }, ['blocking']); // catches when after user clicks on "Approve" it catches that redirect
 // browser.webNavigation.onBeforeNavigate.addListener(oauthWebRequestListener); // this does work, if i copy and paste the url to the bar like for url "http://127.0.0.1/trigger_github?code=d8f5a084e3f6da266050&state=trigger" // user never pastes in a tab, so i dont think its needed
 browser.webNavigation.onCommitted.addListener(oauthWebRequestListener); // when offline it works which is interesting. because when online it seems the request goes through in the back // catches when user goes to reauth page but is redirected immediately because they already had approved the app in the past
 // end - oauth stuff
+
+// start - redir to app
+const APP_REDIRURL_START = 'http://127.0.0.1/' + nub.self.chromemanifestkey + '-app';
+function appRedirListener(detail) {
+  let { url, tabId:tabid } = detail;
+
+  // if (!url.startsWith(APP_REDIRURL_START)) return; // needed for webNavigation
+  console.error('ok appRedirListener triggred, url:', url);
+
+  let redirurl = nub.path.pages + 'app.html';
+  if (url.includes('?')) {
+    let querystr = url.substr(url.indexOf('?'));
+    redirurl += querystr;
+  }
+  // console.log('redirurl:', redirurl);
+
+  if (tabid) setTimeout(()=>browser.tabs.update(tabid, { url:redirurl }), 0); // needed for `webNavigation.Committed` - TODO: support android for controling load in this tab // also needed for `webRequest.onBeforeRequest` because redirecting to a moz-extension:// page is a bug that doesnt work right now
+  return { cancel:true, redirectUrl:redirurl }; // needed for `webRequest.onBeforeRequest`
+}
+browser.webRequest.onBeforeRequest.addListener(appRedirListener, { urls:[ APP_REDIRURL_START + '*'] }, ['blocking']); // catches php redir of paypal2.php to http://127.0.0.1/trigger-app?page=*
+// browser.webNavigation.onCommitted.addListener(appRedirListener); // when offline it works which is interesting. because when online it seems the request goes through in the back // catches when user goes to reauth page but is redirected immediately because they already had approved the app in the past
+
+// end - redir to app
 
 // // start - paypal in frame
 // function paypalWebRequestListener(detail) {
@@ -558,6 +582,21 @@ function browserActionSetTitle(title) {
 }
 function browserActionSetBadgeText(text) {
 
+}
+async function closeTab(tabids) {
+  // if tabids is undefined, then it removes the current active tab
+  if (!tabids) {
+    let tabs = await browser.tabs.query({currentWindow:true, active:true});
+    if (tabs && tabs.length) {
+      let curtab = tabs[0];
+      console.log('curtab:', curtab);
+      tabids = curtab.id;
+    } else {
+      return; // no current tab? weird
+    }
+  }
+
+  await browser.tabs.remove(tabids);
 }
 async function addTab(url) {
   // url is either string or an object

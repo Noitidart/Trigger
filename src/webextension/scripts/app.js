@@ -30,9 +30,18 @@ async function init() {
 		// if (hydrant) store.subscribe(shouldUpdateHydrant); // manually handle setting hydrant
 	}
 
-	window.history.replaceState({key:'trigger'}, browser.i18n.getMessage('addon_name'), '/');
-	// window.history.replaceState({trigger:'origin'}, browser.i18n.getMessage('addon_name'), '/edit/11111111');
-	// console.error('currentLocation on init:', uneval(ReactRouter.browserHistory.getCurrentLocation()));
+  // set pathname for react-router
+  let initial_pathname = '/';
+  let qparam = {};
+  try {
+    qparam = queryStringDom(window.location.href);
+  } catch(ignore) {}
+  if (qparam.page) {
+    initial_pathname += qparam.page;
+    delete qparam.page;
+  }
+  if (Object.keys(qparam).length) initial_pathname += '?' + queryStringDom(qparam);
+  window.history.replaceState({key:'trigger'}, browser.i18n.getMessage('addon_name'), initial_pathname);
 
 	// render react
 	ReactDOM.render(
@@ -420,6 +429,8 @@ const Root = () => React.createElement(ReactRedux.Provider, { store },
 			React.createElement(ReactRouter.Route, { path:'add', component:PageAddCommand }),
 			React.createElement(ReactRouter.Route, { path:'add/browse', component:PageCommunity }),
 			React.createElement(ReactRouter.Route, { path:'add/create', component:PageCommandForm }),
+			React.createElement(ReactRouter.Route, { path:'auth', component:PageAuth }),
+			React.createElement(ReactRouter.Route, { path:'purchase', component:PagePurchase }),
 			React.createElement(ReactRouter.Route, { path:'*', component:PageInvalid })
 		)
 	)
@@ -428,13 +439,13 @@ const Root = () => React.createElement(ReactRedux.Provider, { store },
 const App = React.createClass({
 	displayName: 'App',
 	render() {
-		let { location:{pathname, params}, children } = this.props; // router props
+		let { location:{pathname, params, query}, children } = this.props; // router props
 		console.log('app props:', this.props);
 
 		return React.createElement('div', { id:'app', className:'app container' },
 			React.createElement(ModalWrap, { pathname }),
 			React.createElement(Nags, { pathname }),
-			React.createElement(Header, { pathname, params }),
+			React.createElement(Header, { pathname, params, query }),
 			children
 		);
 	}
@@ -827,17 +838,19 @@ const InputNumberBuyForm = React.createClass({
 const Header = React.createClass({
 	displayName: 'Header',
 	render() {
-		let { pathname, params } = this.props;
+		let { pathname, params, query } = this.props;
 
 		let pathcrumbs = {
 			'/': ['myhotkeys'],
 			'/add': ['myhotkeys', 'addcommand'],
 			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
 			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
-			// '/edit': ['myhotkeys', 'editcommand'],
-			// '/versions': ['myhotkeys', 'versionscommand']
+      '/purchase': ['purchase']
+			// '/auth': ['auth'], // special case
+			// '/edit': ['myhotkeys', 'editcommand'], // special case
+			// '/versions': ['myhotkeys', 'versionscommand'] // special case
 		};
-		// special cases
+		// special cases - /edit, /versions
 		let special = /(edit|versions)\/(_?[a-z0-9]{8})/.exec(pathname)
 		if (special) {
 			let [, subcrumb, filename] = special;
@@ -845,6 +858,12 @@ const Header = React.createClass({
 			let { name } = hotkey.command.content.locales[gLocale]; // TODO: multilocale
 			pathcrumbs[pathname] = ['myhotkeys', browser.i18n.getMessage(`crumb_${subcrumb}command`, name)]
 		}
+
+    // special case - /auth
+    if (pathname == '/auth') {
+      let { serviceid } = query;
+      pathcrumbs[pathname] = [ browser.i18n.getMessage('crumb_auth', browser.i18n.getMessage('servicename_' + serviceid)) ];
+    }
 
 		let crumbs = pathcrumbs[pathname] || ['invalid'];
 
@@ -2395,17 +2414,121 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 	}
 });
 // end - PageCommunity
-const PageInvalid = React.createClass({
-	displayName: 'PageInvalid',
+
+// start - PagePurchase
+const PagePurchase = React.createClass({
+	displayName: 'PagePurchase',
 	render() {
 		let { params } = this.props;
 		console.log('params:', params);
 
 		return React.createElement('div', undefined,
-			'PageInvalid'
+			'PagePurchase'
 		);
 	}
 });
+// end - PagePurchase
+
+// start - PageAuth
+const PageAuth = React.createClass({
+	displayName: 'PageAuth',
+  gotoMyhotkeys(e) {
+		if (!stopClickAndCheck0(e)) return;
+		loadPage('/');
+  },
+  closeTab(e) {
+    if (!stopClickAndCheck0(e)) return;
+    callInBackground('closeTab');
+  },
+  doReauth(e) {
+    if (!stopClickAndCheck0(e)) return;
+    let { location:{query} } = this.props; // router
+    let { serviceid } = query;
+    callInBackground('closeTab');
+    callInBackground('openAuthTab', { serviceid })
+  },
+	render() {
+		let { location:{query}, params } = this.props; // router
+		console.log('params:', params, 'query:', query);
+
+    let { serviceid, act } = query;
+
+    let authtitle, authmsg, btn1, btn2;
+    if (act == 'approved') {
+      authtitle = browser.i18n.getMessage('authtitle_approved');
+      authmsg = browser.i18n.getMessage('authmsg_approved_' + serviceid);
+
+      btn1 = {
+        label: browser.i18n.getMessage('myhotkeys'),
+        onClick: this.gotoMyhotkeys,
+        class: 'success'
+      };
+      btn2 = {
+        label: browser.i18n.getMessage('close_tab'),
+        onClick: this.closeTab,
+        class: 'danger'
+      };
+    } else if (act == 'denied') {
+      authtitle = browser.i18n.getMessage('authtitle_denied');
+      authmsg = browser.i18n.getMessage('authmsg_denied_' + serviceid);
+      btn1 = {
+        label: browser.i18n.getMessage('reauthorize'),
+        onClick: this.doReauth,
+        class: 'primary'
+      };
+      btn2 = {
+        label: browser.i18n.getMessage('close_tab'),
+        onClick: this.closeTab,
+        class: 'danger'
+      };
+    } else {
+      authtitle = browser.i18n.getMessage('authtitle_unknown');
+      authmsg = browser.i18n.getMessage('authmsg_unknown');
+      btn1 = {
+        label: browser.i18n.getMessage('close_tab'),
+        onClick: this.closeTab,
+        class: 'danger'
+      };
+    }
+
+
+    return React.createElement('span', undefined,
+      // content
+      React.createElement('div', { className:'jumbotron jumbo-' + serviceid, style:{backgroundImage:`url(../images/${serviceid}.png)`} },
+        React.createElement('h1', undefined, authtitle),
+        React.createElement('p', { className:'lead' }, authmsg),
+        React.createElement('p', undefined,
+          btn1 && React.createElement('a', { href:'#', onClick:btn1.onClick, className:'btn btn-lg btn-' + btn1.class }, btn1.label),
+          btn1 && btn2 && ' ',
+          btn2 && React.createElement('a', { href:'#', onClick:btn2.onClick, className:'btn btn-lg btn-' + btn2.class }, btn2.label)
+        )
+      ),
+      React.createElement('hr')
+		);
+	}
+});
+// end - PageAuth
+
+// start - PageInvalid
+const PageInvalid = React.createClass({
+	displayName: 'PageInvalid',
+  gotoMyhotkeys(e) {
+		if (!stopClickAndCheck0(e)) return;
+		loadPage('/');
+  },
+	render() {
+		let { params } = this.props;
+		console.log('params:', params);
+
+		return React.createElement('div', undefined,
+			'You have reached a page that does not exist.',
+      React.createElement('a', { href:'/', onClick:gotoMyhotkeys },
+        'Go to My Hotkeys'
+      )
+		);
+	}
+});
+// end - PageInvalid
 
 // start - specific helpers
 function genFilename() {

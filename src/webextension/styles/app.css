@@ -288,3 +288,33 @@ select.btn {
   top: 1px;
 }
 /* end - buy_field */
+
+/* start - jumbo authorized */
+.jumbotron {
+    text-align: center;
+
+    /* for transparent image trick */
+    background-repeat: none;
+    background-size: 0;
+    position: relative;
+    z-index: 0;
+}
+.jumbotron::after {
+    /* transparent image trick */
+    background-image: inherit;
+    background-position: -10% 120%;
+    background-repeat: no-repeat;
+    /*background-size: 500px;*/
+    bottom: 0;
+    content: '';
+    left: 0;
+    opacity: 0.1;
+    position: absolute;
+    right: 0;
+    top: 0;
+    z-index: -1;
+}
+.jumbotron p.lead {
+    margin: 30px;
+}
+/* end - jumbo authorized */
