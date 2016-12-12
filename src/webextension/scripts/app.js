@@ -670,9 +670,9 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
     let { closeModal, modal } = this.props;
 
     createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
-      title: 'Requesting Paypal Initialization',
+      title: browser.i18n.getMessage('title_startrans'),
       close: false,
-      msg: 'Establishing connection with Paypal servers...',
+      msg: browser.i18n.getMessage('message_startrans'),
       ok: null,
       cancel: null
     });
@@ -707,18 +707,18 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
       await promiseTimeout(300); // wait close
 
       createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
-        title: 'Paypal Initialization Failed',
+        title: browser.i18n.getMessage('title_failtrans'),
         msg: React.createElement('p', undefined,
-          'Failed to connect to Paypal servers.',
+          browser.i18n.getMessage('message_failtrans'),
           React.createElement('br'),
           React.createElement('br'),
-          React.createElement('b', undefined, 'Load Reason: '),
+          React.createElement('b', undefined, browser.i18n.getMessage('load_reason') + ' '),
           reason,
           React.createElement('br'),
-          React.createElement('b', undefined, 'Status: '),
+          React.createElement('b', undefined, browser.i18n.getMessage('status') + ' '),
           status,
           React.createElement('br'),
-          React.createElement('b', undefined, 'Response: '),
+          React.createElement('b', undefined, browser.i18n.getMessage('response') + ' '),
           JSON.stringify(response)
         ),
         ok: { label:browser.i18n.getMessage('try_again'), onClick:this.onOk }
@@ -2521,10 +2521,8 @@ const PageInvalid = React.createClass({
 		console.log('params:', params);
 
 		return React.createElement('div', undefined,
-			'You have reached a page that does not exist.',
-      React.createElement('a', { href:'/', onClick:gotoMyhotkeys },
-        'Go to My Hotkeys'
-      )
+			browser.i18n.getMessage('invalidpage_message'),
+      ' ', React.createElement('a', { href:'/', onClick:this.gotoMyhotkeys }, browser.i18n.getMessage('invalidpage_link'))
 		);
 	}
 });

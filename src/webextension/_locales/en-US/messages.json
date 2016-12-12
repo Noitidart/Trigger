@@ -117,6 +117,14 @@
 	"dismiss_maxhotkeysenabled": { "message":"No, Don't Enable" },
   "havecode_maxhotkeysenabled": { "message":"Already have a code?" },
 
+  "title_startrans": { "message":"Starting Transaction" },
+  "message_startrans": { "message":"Establishing connection with transcaction and Paypal servers..." },
+  "title_failtrans": { "message":"Transaction Failed" },
+  "message_failtrans": { "message":"Failed to connect to transaction servers." },
+  "load_reason": { "message":"Load Reason:" },
+  "status": { "message":"Status:" },
+  "response": { "message":"Response:" },
+
   "title_entercode": { "message":"Enable Hotkeys" },
   "dismiss_entercode": { "message":"Cancel" },
   "confirm_entercode": { "message":"Enable Now" },
@@ -152,6 +160,9 @@
 
 	"github_auth_needed": { "message": "You need to authorize your Github account. Authorize now?" },
 	"github_shared_success": { "message":"Succesfully shared! Pending approval. Open approval topic in new tab?" },
-	"github_shared_fail": { "message":"Failed to share, error returned was: \"$ERROR$\"", "placeholders": {"ERROR":{"content":"$1"}} }
+	"github_shared_fail": { "message":"Failed to share, error returned was: \"$ERROR$\"", "placeholders": {"ERROR":{"content":"$1"}} },
+
+  "invalidpage_message": { "message": "You have reached a page that does not exist." },
+  "invalidpage_link": { "message": "Go To Main Page" }
 
 }
