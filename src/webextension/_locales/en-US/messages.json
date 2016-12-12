@@ -133,6 +133,8 @@
 	"back": { "message": "Back" },
 	"try_again": { "message": "Try Again" },
 	"close": { "message": "Close" },
+	"okay": { "message": "Okay" },
+	"cancel": { "message": "Cancel" },
 
 	"loading_community": { "message": "Loading community from Github..." },
 

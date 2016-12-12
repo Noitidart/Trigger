@@ -566,9 +566,10 @@ const Modal = React.createClass({
 	render() {
 		let { modal } = this.props;
 
-		let { content_component, title, msg, ok={}, cancel={} } = modal; // mapped state
-		let ok_label = ok.label;
-		let cancel_label = cancel.label;
+		let { content_component, title, msg, close=true, ok={label:browser.i18n.getMessage('okay')}, cancel={label:browser.i18n.getMessage('cancel')} } = modal; // mapped state
+    // ok and cancel are objects with label, onClick keys
+		let ok_label = ok && ok.label;
+		let cancel_label = cancel && cancel.label;
 		// console.log(title, body, ok, cancel, 'props:', this.props, 'props:', this.props);
 
 		return React.createElement('div', { className:'modal', style:{paddingRight:this.measureScrollbar()+'px'} },
@@ -576,7 +577,7 @@ const Modal = React.createClass({
 				content_component && React.createElement(window[content_component], { closeModal:this.closeModal, modal }),
 				!content_component && React.createElement('div', { className:'modal-content' },
 					React.createElement('div', { className:'modal-header' },
-						React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.doCancel },
+						close && React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.doCancel },
 							React.createElement('span', { 'aria-hidden':'true'}, '×'),
 							React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
 						),
@@ -646,13 +647,83 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 		let { closeModal } = this.props;
 		closeModal();
 	},
-	onOk(e) {
+	async onOk(e) {
 		if (!stopClickAndCheck0(e)) return;
 
-		let { closeModal } = this.props;
+		let { closeModal, modal } = this.props;
 		closeModal();
-    this.gotoEnter();
-	},
+    await promiseTimeout(300); // wait for close anim
+    this.gotoInitPayapl();
+  },
+  async gotoInitPayapl() {
+    let { closeModal, modal } = this.props;
+
+    createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+      title: 'Requesting Paypal Initialization',
+      close: false,
+      msg: 'Establishing connection with Paypal servers...',
+      ok: null,
+      cancel: null
+    });
+
+    await promiseTimeout(300); // wait create anim
+
+    let { data:{buyqty} } = modal;
+
+    try {
+      let xpppinit = await xhrPromise('https://trigger-community.sundayschoolonline.org/paypal.php?qty=' + buyqty, { method:'GET', restype:'json' }); // xp_paypal_init
+
+      let { xhr:{response, status} } = xpppinit;
+
+      if (status !== 200) {
+        throw xpppinit;
+      } else {
+        closeModal();
+        await promiseTimeout(300);
+        this.gotoPaypalFrame(response.approval_url);
+      }
+    } catch(xperr) {
+
+      console.log('xperr:', xperr);
+      let { xhr:{response, status}, reason } = xperr;
+
+      closeModal();
+
+      await promiseTimeout(300); // wait close
+
+      createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+        title: 'Paypal Initialization Failed',
+        msg: React.createElement('p', undefined,
+          'Failed to connect to Paypal servers.',
+          React.createElement('br'),
+          React.createElement('br'),
+          React.createElement('b', undefined, 'Load Reason: '),
+          reason,
+          React.createElement('br'),
+          React.createElement('b', undefined, 'Status: '),
+          status,
+          React.createElement('br'),
+          React.createElement('b', undefined, 'Response: '),
+          JSON.stringify(response)
+        ),
+        ok: { label:browser.i18n.getMessage('try_again'), onClick:this.onOk }
+      });
+    }
+  },
+  gotoPaypalFrame(url) {
+    createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+      title: 'Paypal',
+      msg: React.createElement('p', undefined,
+        'Please complete the Paypal process in the frame below.',
+        React.createElement('br'),
+        React.createElement('br'),
+        React.createElement('iframe', { src:url, width:'500px', height:'600px' })
+      ),
+      close: false,
+      ok: null,
+      cancel: null
+    });
+  },
   gotoEnter(e) {
     if (!stopClickAndCheck0(e)) return;
 		let { closeModal } = this.props;

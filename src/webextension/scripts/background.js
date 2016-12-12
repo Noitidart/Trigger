@@ -487,6 +487,22 @@ browser.webRequest.onBeforeRequest.addListener(oauthWebRequestListener, { urls:[
 browser.webNavigation.onCommitted.addListener(oauthWebRequestListener); // when offline it works which is interesting. because when online it seems the request goes through in the back // catches when user goes to reauth page but is redirected immediately because they already had approved the app in the past
 // end - oauth stuff
 
+// start - paypal in frame
+function paypalWebRequestListener(detail) {
+	let { url, tabId:tabid, responseHeaders:headers } = detail;
+
+  let has_xframeoptions = headers.findIndex( ({name}) => name == 'x-frame-options' );
+  if (has_xframeoptions > -1) {
+    let newheaders = headers.splice(has_xframeoptions, 1);
+    console.error('yes this paypal one had x-frame-options so lets remove it', 'url:', url, 'headers:', headers);
+    console.error('newheaders:', newheaders);
+    // return { responseHeaders:[{name:'x-frame-options', value:undefined}] };
+    return { responseHeaders:newheaders };
+  }
+}
+browser.webRequest.onHeadersReceived.addListener(paypalWebRequestListener, { urls:['https://www.sandbox.paypal.com/*'] }, ['blocking', 'responseHeaders']);
+// end - paypal in frame
+
 // // about page
 // var aboutPageTabIds = {}
 // function aboutPageListenerNavigate({url, tabId:tabid}) {
