@@ -2464,7 +2464,7 @@ const PagePurchase = React.createClass({
 		let { location:{ query }, params } = this.props; // router
 		console.log('params:', params, 'query:', query);
 
-    let { serial } = query;
+    let { serial, error } = query;
 
     return React.createElement('span', undefined,
       React.createElement('div', { className:'row text-center' },
@@ -2477,7 +2477,10 @@ const PagePurchase = React.createClass({
       ),
       React.createElement('hr'),
       // content
-      React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
+      error && React.createElement('div', { className:'jumbotron', style:{background:'none'} },
+        React.createElement('h1', { className:'lead' }, 'You cancelled the purchase. Error returned: ' + error)
+      ),
+      !error && React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
         React.createElement('p', { className:'lead' }, 'Thank you for your purchase! Your purchase code is:'),
         React.createElement('h1', undefined, serial),
         React.createElement('p', { className:'lead' }, 'Enter this code enable exta hotkeys.'),
