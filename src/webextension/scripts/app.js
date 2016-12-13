@@ -2428,8 +2428,37 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 const PagePurchase = React.createClass({
 	displayName: 'PagePurchase',
   goBack: e => stopClickAndCheck0(e) && loadOldPage('/'),
-  doEmail(e) {
-    if (stopClickAndCheck0(e)) return;
+  async doEmail(e) {
+    if (!stopClickAndCheck0(e)) return;
+
+    let { location:{query:{ serial }} } = this.props; // router
+
+    let text = document.getElementById('email_text');
+    let btn = document.getElementById('email_btn');
+
+    let to = text.value.trim();
+    let patt_email = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    if (!patt_email.test(to)) return alert('Invalid email');
+
+    btn.setAttribute('disabled', 'disabled');
+    text.setAttribute('disabled', 'disabled');
+
+    let s = 'Trigger - Purchase Code';
+    let msg = 'Thank you for your purchase. You can use this code to enable extra hotkeys. Your code is: ' + serial;
+    let qstr = queryStringDom({to, msg, s});
+    let xpemail = await xhrPromise('https://trigger-community.sundayschoolonline.org/email.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
+
+    let { xhr:{response, status}, reason } = xpemail;
+
+    if (status === 200 && !response.error) {
+      alert('Email successfully sent')
+      text.value = '';
+    } else {
+      alert(`Email failed to send.\n\nLoad Reason: ${reason}\nStatus: ${status}\nResponse: ${JSON.stringify(response)}`);
+    }
+
+    btn.removeAttribute('disabled');
+    text.removeAttribute('disabled');
   },
 	render() {
 		let { location:{ query }, params } = this.props; // router
@@ -2457,11 +2486,11 @@ const PagePurchase = React.createClass({
           React.createElement('div', { className:'container-fluid' },
             React.createElement('form', { className:'navbar-form' },
               React.createElement('div', { className:'form-group form-group-lg' },
-                React.createElement('input', { className:'form-control', type:'text' }),
+                React.createElement('input', { className:'form-control', type:'text', id:'email_text' }),
               ),
               ' ',
-              React.createElement('button', { className:'btn btn-default btn-lg', type:'submit', onClick:this.doEmail },
-                React.createElement('span', { className:'glyphicon glyphicon-send'}),
+              React.createElement('button', { className:'btn btn-default btn-lg', type:'button', id:'email_btn', onClick:this.doEmail },
+                React.createElement('span', { className:'glyphicon glyphicon-send '}),
                 ' ' + 'Email Me'
               )
             )
