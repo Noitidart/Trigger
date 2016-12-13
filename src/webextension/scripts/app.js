@@ -13,8 +13,8 @@ async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
 	document.title = browser.i18n.getMessage('addon_name');
 
-	// gLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
-	gLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val)));
+	// gExtLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
+	gExtLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val)));
 	gUserLocales = (await new Promise(resolve => callInBackground('getUserPreferredLocales', undefined, val=>resolve(val)))).map(el => el.replace(/_/g, '-'));
 
 	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant, nub:1 }, val => resolve(val)) );
@@ -69,7 +69,7 @@ let hydrant = {
 	}
 };
 
-let gLocale; // the locale in my _locales dir that the browser is showing my strings in
+let gExtLocale; // the locale in my _locales dir that the browser is showing my strings in
 let gUserLocales; // user prefered locales - array
 
 const GROUPS = [ // command groups
@@ -679,10 +679,19 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 
     await promiseTimeout(300); // wait create anim
 
+    let paypal_avail_locales = ['da_DK', 'he_IL', 'id_ID', 'ja_JP', 'no_NO', 'pt_BR', 'ru_RU', 'sv_SE', 'th_TH', 'zh_CN', 'zh_HK', 'zh_TW', 'AU', 'AT', 'BE', 'BR', 'CA', 'CH', 'CN', 'DE', 'ES', 'GB', 'FR', 'IT', 'NL', 'PL', 'PT', 'RU', 'US']; // as of 121216 taken from here - https://developer.paypal.com/docs/api/payment-experience/#definition-presentation
+    // let wanted_locales = [...new Set([gUserLocales, gExtLocale].map(el => el.toLowerCase()))]; // lowered and deduped
+    let wanted_locales = [...new Set([gExtLocale].map(el => el.toLowerCase()))]; // lowered and deduped
+    let pplocale = findClosestLocale(paypal_avail_locales, wanted_locales) || 'US'; // 'US' is an improper locale code by paypal, it is just a country code which is real weird
+    console.log('wanted_locales:', wanted_locales, 'pplocale:', pplocale);
+
     let { data:{buyqty} } = modal;
 
     try {
-      let xpppinit = await xhrPromise('https://trigger-community.sundayschoolonline.org/paypal.php?qty=' + buyqty, { method:'GET', restype:'json' }); // xp_paypal_init
+      let qparams = {locale:pplocale, qty:buyqty};
+      let qstr = queryStringDom(qparams);
+      console.log('qstr:', qstr);
+      let xpppinit = await xhrPromise('https://trigger-community.sundayschoolonline.org/paypal.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
 
       let { xhr:{response, status} } = xpppinit;
 
@@ -845,7 +854,7 @@ const Header = React.createClass({
 			'/add': ['myhotkeys', 'addcommand'],
 			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
 			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
-      '/purchase': ['purchase']
+      '/purchase': ['myhotkeys', 'purchase']
 			// '/auth': ['auth'], // special case
 			// '/edit': ['myhotkeys', 'editcommand'], // special case
 			// '/versions': ['myhotkeys', 'versionscommand'] // special case
@@ -855,7 +864,7 @@ const Header = React.createClass({
 		if (special) {
 			let [, subcrumb, filename] = special;
 			let hotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
-			let { name } = hotkey.command.content.locales[gLocale]; // TODO: multilocale
+			let { name } = hotkey.command.content.locales[gExtLocale]; // TODO: multilocale
 			pathcrumbs[pathname] = ['myhotkeys', browser.i18n.getMessage(`crumb_${subcrumb}command`, name)]
 		}
 
@@ -1278,7 +1287,7 @@ const Hotkey = ReactRedux.connect(
 		let { recording, hotkeys } = this.props; // mapped state
 
 		let { enabled, combo, command } = hotkey;
-		let { share_unix, filename, content:{group, locales:{[gLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
+		let { share_unix, filename, content:{group, locales:{[gExtLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
 		// share_unix, filename, group, name, description, code
 
 		let hashotkey = !!combo;
@@ -1507,7 +1516,7 @@ const PageCommandForm = ReactRedux.connect(
 			// if edit, make sure at least one value is changed
 			Object.assign(domvalues, getFormValues(['group']));
 
-			let { group, locales:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content; // TODO: multilocale point
+			let { group, locales:{[gExtLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content; // TODO: multilocale point
 			let hotkeyvalues = { group, name, description, code };
 
 			if(!React.addons.shallowCompare({props:hotkeyvalues}, domvalues))
@@ -1542,7 +1551,7 @@ const PageCommandForm = ReactRedux.connect(
 		// default values for form fields
 		let name, description, code, group=0; // default group "Uncategorized"
 		if (iseditpage) // take from `hotkey`
-			({ group, locales:{[gLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
+			({ group, locales:{[gExtLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content);
 
 		return React.createElement('span', undefined,
 			// controls
@@ -1769,7 +1778,7 @@ function calcCommandChanges(newcontent, content) {
 
 	return Object.keys(changes) ? changes : null;
 }
-const LocalePicker = ({ locale=gLocale, onChange }) =>
+const LocalePicker = ({ locale=gExtLocale, onChange }) =>
 	React.createElement('div', { className:'input-group-btn' },
 		React.createElement('select', { className:'btn btn-default', defaultValue:locale, tabIndex:'-1', onChange },
 			React.createElement('option', { value:'en-US' },
@@ -1975,12 +1984,12 @@ const PageCommunity = ReactRedux.connect(
 	},
 	sortRemoteCommands(remotecommands, sort='alpha') {
 		let sortalgo = {
-			alpha: (a, b) => compareIntThenLex(a.content.locales[gLocale].name, b.content.locales[gLocale].name), // asc
+			alpha: (a, b) => compareIntThenLex(a.content.locales[gExtLocale].name, b.content.locales[gExtLocale].name), // asc
 			installs: (a, b) => b._installs - a._installs, // desc
 			updated: (a, b) => b._versions[0].date - a._versions[0].date // desc
 		};
-		console.log('pre sort:', remotecommands.map(el=>el.content.locales[gLocale].name));
-		setTimeout(()=>console.log('post sort:', remotecommands.map(el=>el.content.locales[gLocale].name)));
+		console.log('pre sort:', remotecommands.map(el=>el.content.locales[gExtLocale].name));
+		setTimeout(()=>console.log('post sort:', remotecommands.map(el=>el.content.locales[gExtLocale].name)));
 		return remotecommands.sort(sortalgo[sort]);
 	},
 	changeSort() {
@@ -2150,7 +2159,7 @@ const RemoteCommand = ReactRedux.connect(
 	displayName: 'RemoteCommand',
 	render() {
 		let { remotecommand } = this.props;
-		let { _installs:installs, _versions:versions, filename, content:{locales:{[gLocale]:{name, description}}} } = remotecommand;
+		let { _installs:installs, _versions:versions, filename, content:{locales:{[gExtLocale]:{name, description}}} } = remotecommand;
 		let version = versions.length;
 		let { date } = versions[0];
 
@@ -2298,7 +2307,7 @@ const InstallBtn = ReactRedux.connect(
   			command
   		}));
     }
-		let { name } = remotecommand.content.locales[gLocale];
+		let { name } = remotecommand.content.locales[gExtLocale];
 
 		createNag(ReactRouter.browserHistory.getCurrentLocation().pathname, {title:browser.i18n.getMessage('title_installed'),ok_label:browser.i18n.getMessage('confirm_installed'),cancel_label:browser.i18n.getMessage('dismiss_installed'), msg:browser.i18n.getMessage('message_' + message_key, name), glyphicon, type:'primary', onOk:this.nagOnOk})
 
@@ -2418,12 +2427,58 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 // start - PagePurchase
 const PagePurchase = React.createClass({
 	displayName: 'PagePurchase',
+  goBack: e => stopClickAndCheck0(e) && loadOldPage('/'),
+  doEmail(e) {
+    if (stopClickAndCheck0(e)) return;
+  },
 	render() {
-		let { params } = this.props;
-		console.log('params:', params);
+		let { location:{ query }, params } = this.props; // router
+		console.log('params:', params, 'query:', query);
 
-		return React.createElement('div', undefined,
-			'PagePurchase'
+    let { serial } = query;
+
+    return React.createElement('span', undefined,
+      React.createElement('div', { className:'row text-center' },
+        React.createElement('div', { className:'col-lg-12' },
+          React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
+            React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
+            ' ' + browser.i18n.getMessage('back')
+          ),
+        )
+      ),
+      React.createElement('hr'),
+      // content
+      React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
+        React.createElement('p', { className:'lead' }, 'Thank you for your purchase! Your purchase code is:'),
+        React.createElement('h1', undefined, serial),
+        React.createElement('p', { className:'lead' }, 'Enter this code enable exta hotkeys.'),
+        React.createElement('p', undefined,
+          'Write this code down in case you need it in the future. You can email yourself this code below:',
+          React.createElement('div', { className:'container-fluid' },
+            React.createElement('form', { className:'navbar-form' },
+              React.createElement('div', { className:'form-group form-group-lg' },
+                React.createElement('input', { className:'form-control', type:'text' }),
+              ),
+              ' ',
+              React.createElement('button', { className:'btn btn-default btn-lg', type:'submit', onClick:this.doEmail },
+                React.createElement('span', { className:'glyphicon glyphicon-send'}),
+                ' ' + 'Email Me'
+              )
+            )
+          ),
+        ),
+        React.createElement('p', { className:'lead' },
+          React.createElement('img', { src:'../images/alreadyhavecode.png', style:{width:'50%'} } ),
+          React.createElement('div', { style:{margin:'15px 0 10px 0'} },
+            React.createElement('span', { className:'glyphicon glyphicon-arrow-down'}),
+          ),
+          React.createElement('img', { src:'../images/entercode.png', style:{width:'50%'} } ),
+        ),
+        React.createElement('p', { className:'lead' },
+          React.createElement('i', undefined, 'This code will only work on your current computer. If you want to use it on another computer, contact Noitidart and prove that it is you, he will give you a coupon for free hotkeys.'),
+        ),
+      ),
+      React.createElement('hr')
 		);
 	}
 });
