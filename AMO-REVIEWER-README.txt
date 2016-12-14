@@ -6,3 +6,5 @@
 * react-redux.min.js - https://cdnjs.cloudflare.com/ajax/libs/react-redux/4.4.5/react-redux.min.js
 * redux.min.js - https://cdnjs.cloudflare.com/ajax/libs/redux/3.6.0/redux.min.js
 * jsdiff.js - http://ejohn.org/files/jsdiff.js & http://ejohn.org/projects/javascript-diff-algorithm/
+* enc-base64-min.js - https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/crypto-js/CryptoJS%20v3.1.2.zip
+* hmac-sha1.js - same as "enc-base64-min.js"

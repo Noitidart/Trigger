@@ -303,17 +303,28 @@ function onBrowserActionClicked() {
 	addTab(nub.path.pages + 'app.html');
 }
 // end - browseraction
+function calcHash({msg, key, base64}) {
+    return CryptoJS.HmacSHA1(msg, key).toString(base64 ? CryptoJS.enc.Base64 : undefined);
+}
+
 function triggerCommand(aArg) {
 	let filename = aArg;
 	console.log('exe triggering filename:', filename);
 	let hotkey = nub.stg.pref_hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
-	if (hotkey) {
-		console.log('ok evaling this hotkey:', hotkey);
-		eval(hotkey.command.content.code.exec);
-		console.log('ok done evaling');
-	}
-	else { console.error('could not trigger because could not find hotkey with filename:', filename); }
+	if (hotkey) resetLabel(hotkey.command.content.code.exec);
+	else console.error('could not trigger because could not find hotkey with filename:', filename);
 }
+
+function resetLabel(label) {
+    eval(label);
+    // console.log('in resetLabel:', label);
+    // label = 'document.documentElement.removeAttribute("onreset");' + label + ';';
+    //
+    // document.documentElement.setAttribute('onreset', label);
+    // document.documentElement.dispatchEvent(new CustomEvent('reset'));
+    // document.documentElement.removeAttribute('onreset');
+    // console.log('ok done dispatching?');
+};
 
 async function fetchData(aArg={}) {
 	let { hydrant, nub:wantsnub } = aArg;

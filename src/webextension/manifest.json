@@ -44,17 +44,7 @@
 		"webRequestBlocking"
 	],
 
-	"background": {
-		"scripts": [
-			"scripts/3rd/polyfill.min.js",
-			"scripts/3rd/ba-issemver.min.js",
-			"scripts/3rd/comm/webext.js",
-			"scripts/common/all.js",
-			"scripts/common/dom.js",
-			"scripts/common/background.js",
-			"scripts/background.js"
-		]
-	},
+	"background": { "page": "pages/background.html" },
 
 	"browser_action": {
 		"default_icon": "images/icon.svg",

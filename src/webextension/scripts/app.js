@@ -1,8 +1,9 @@
 let gBgComm = new Comm.client.webextports('tab');
-let callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
-let callInExe = Comm.callInX2.bind(null, gBgComm, 'callInExe', null);
-let callInBootstrap = Comm.callInX2.bind(null, gBgComm, 'callInBootstrap', null);
-let callInMainworker = Comm.callInX2.bind(null, gBgComm, 'callInMainworker', null);
+var callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
+var callInExe = Comm.callInX2.bind(null, gBgComm, 'callInExe', null);
+var callInBootstrap = Comm.callInX2.bind(null, gBgComm, 'callInBootstrap', null);
+var callInMainworker = Comm.callInX2.bind(null, gBgComm, 'callInMainworker', null);
+let callIn = (...args) => new Promise(resolve => window['callIn' + args.shift()](...args, val=>resolve(val))); // must pass undefined for aArg if one not provided, due to my use of spread here. had to do this in case first arg is aMessageManagerOrTabId
 
 let nub;
 let store;
@@ -688,7 +689,7 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
     let { data:{buyqty} } = modal;
 
     try {
-      let qparams = {locale:pplocale, qty:buyqty};
+      let qparams = {locale:pplocale, qty:buyqty, mh:await callIn('Exe', 'getMh', undefined)};
       let qstr = queryStringDom(qparams);
       console.log('qstr:', qstr);
       let xpppinit = await xhrPromise('https://trigger-community.sundayschoolonline.org/paypal.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
@@ -2427,92 +2428,92 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 // start - PagePurchase
 const PagePurchase = React.createClass({
 	displayName: 'PagePurchase',
-  goBack: e => stopClickAndCheck0(e) && loadOldPage('/'),
-  async doEmail(e) {
-    if (!stopClickAndCheck0(e)) return;
+    goBack: e => stopClickAndCheck0(e) && loadOldPage('/'),
+    async doEmail(e) {
+        if (!stopClickAndCheck0(e)) return;
 
-    let { location:{query:{ serial }} } = this.props; // router
+        let { location:{query:{ serial }} } = this.props; // router
 
-    let text = document.getElementById('email_text');
-    let btn = document.getElementById('email_btn');
+        let text = document.getElementById('email_text');
+        let btn = document.getElementById('email_btn');
 
-    let to = text.value.trim();
-    let patt_email = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-    if (!patt_email.test(to)) return alert('Invalid email');
+        let to = text.value.trim();
+        let patt_email = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        if (!patt_email.test(to)) return alert('Invalid email');
 
-    btn.setAttribute('disabled', 'disabled');
-    text.setAttribute('disabled', 'disabled');
+        btn.setAttribute('disabled', 'disabled');
+        text.setAttribute('disabled', 'disabled');
 
-    let s = 'Trigger - Purchase Code';
-    let msg = 'Thank you for your purchase. You can use this code to enable extra hotkeys. Your code is: ' + serial;
-    let qstr = queryStringDom({to, msg, s});
-    let xpemail = await xhrPromise('https://trigger-community.sundayschoolonline.org/email.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
+        let s = 'Trigger - Purchase Code';
+        let msg = 'Thank you for your purchase. You can use this code to enable extra hotkeys. Your code is: ' + serial;
+        let qstr = queryStringDom({to, msg, s});
+        let xpemail = await xhrPromise('https://trigger-community.sundayschoolonline.org/email.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
 
-    let { xhr:{response, status}, reason } = xpemail;
+        let { xhr:{response, status}, reason } = xpemail;
 
-    if (status === 200 && !response.error) {
-      alert('Email successfully sent')
-      text.value = '';
-    } else {
-      alert(`Email failed to send.\n\nLoad Reason: ${reason}\nStatus: ${status}\nResponse: ${JSON.stringify(response)}`);
-    }
+        if (status === 200 && !response.error) {
+            alert('Email successfully sent')
+            text.value = '';
+        } else {
+            alert(`Email failed to send.\n\nLoad Reason: ${reason}\nStatus: ${status}\nResponse: ${JSON.stringify(response)}`);
+        }
 
-    btn.removeAttribute('disabled');
-    text.removeAttribute('disabled');
-  },
-	render() {
-		let { location:{ query }, params } = this.props; // router
-		console.log('params:', params, 'query:', query);
+        btn.removeAttribute('disabled');
+        text.removeAttribute('disabled');
+    },
+    render() {
+    	let { location:{ query }, params } = this.props; // router
+    	console.log('params:', params, 'query:', query);
 
-    let { serial, error } = query;
+        let { serial, error } = query;
 
-    return React.createElement('span', undefined,
-      React.createElement('div', { className:'row text-center' },
-        React.createElement('div', { className:'col-lg-12' },
-          React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
-            React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
-            ' ' + browser.i18n.getMessage('back')
-          ),
-        )
-      ),
-      React.createElement('hr'),
-      // content
-      error && React.createElement('div', { className:'jumbotron', style:{background:'none'} },
-        React.createElement('h1', { className:'lead' }, 'You cancelled the purchase. Error returned: ' + error)
-      ),
-      !error && React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
-        React.createElement('p', { className:'lead' }, 'Thank you for your purchase! Your purchase code is:'),
-        React.createElement('h1', undefined, serial),
-        React.createElement('p', { className:'lead' }, 'Enter this code enable exta hotkeys.'),
-        React.createElement('p', undefined,
-          'Write this code down in case you need it in the future. You can email yourself this code below:',
-          React.createElement('div', { className:'container-fluid' },
-            React.createElement('form', { className:'navbar-form' },
-              React.createElement('div', { className:'form-group form-group-lg' },
-                React.createElement('input', { className:'form-control', type:'text', id:'email_text' }),
+        return React.createElement('span', undefined,
+          React.createElement('div', { className:'row text-center' },
+            React.createElement('div', { className:'col-lg-12' },
+              React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
+                React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
+                ' ' + browser.i18n.getMessage('back')
               ),
-              ' ',
-              React.createElement('button', { className:'btn btn-default btn-lg', type:'button', id:'email_btn', onClick:this.doEmail },
-                React.createElement('span', { className:'glyphicon glyphicon-send '}),
-                ' ' + 'Email Me'
-              )
             )
           ),
-        ),
-        React.createElement('p', { className:'lead' },
-          React.createElement('img', { src:'../images/alreadyhavecode.png', style:{width:'50%'} } ),
-          React.createElement('div', { style:{margin:'15px 0 10px 0'} },
-            React.createElement('span', { className:'glyphicon glyphicon-arrow-down'}),
+          React.createElement('hr'),
+          // content
+          error && React.createElement('div', { className:'jumbotron', style:{background:'none'} },
+            React.createElement('h1', { className:'lead' }, 'You cancelled the purchase. Error returned: ' + error)
           ),
-          React.createElement('img', { src:'../images/entercode.png', style:{width:'50%'} } ),
-        ),
-        React.createElement('p', { className:'lead' },
-          React.createElement('i', undefined, 'This code will only work on your current computer. If you want to use it on another computer, contact Noitidart and prove that it is you, he will give you a coupon for free hotkeys.'),
-        ),
-      ),
-      React.createElement('hr')
-		);
-	}
+          !error && React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
+            React.createElement('p', { className:'lead' }, 'Thank you for your purchase! Your purchase code is:'),
+            React.createElement('h1', undefined, serial),
+            React.createElement('p', { className:'lead' }, 'Enter this code enable exta hotkeys.'),
+            React.createElement('p', undefined,
+              'Write this code down in case you need it in the future. You can email yourself this code below:',
+              React.createElement('div', { className:'container-fluid' },
+                React.createElement('form', { className:'navbar-form' },
+                  React.createElement('div', { className:'form-group form-group-lg' },
+                    React.createElement('input', { className:'form-control', type:'text', id:'email_text' }),
+                  ),
+                  ' ',
+                  React.createElement('button', { className:'btn btn-default btn-lg', type:'button', id:'email_btn', onClick:this.doEmail },
+                    React.createElement('span', { className:'glyphicon glyphicon-send '}),
+                    ' ' + 'Email Me'
+                  )
+                )
+              ),
+            ),
+            React.createElement('p', { className:'lead' },
+              React.createElement('img', { src:'../images/alreadyhavecode.png', style:{width:'50%'} } ),
+              React.createElement('div', { style:{margin:'15px 0 10px 0'} },
+                React.createElement('span', { className:'glyphicon glyphicon-arrow-down'}),
+              ),
+              React.createElement('img', { src:'../images/entercode.png', style:{width:'50%'} } ),
+            ),
+            React.createElement('p', { className:'lead' },
+              React.createElement('i', undefined, 'This code will only work on your current computer. If you want to use it on another computer, contact Noitidart and prove that it is you, he will give you a coupon for free hotkeys.'),
+            ),
+          ),
+          React.createElement('hr')
+    	);
+    }
 });
 // end - PagePurchase
 
