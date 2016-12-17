@@ -518,3 +518,24 @@ select.btn {
   animation-delay: 0.5s;
 }
 /* end - ripple loader */
+/* start - enter form */
+.entercode .uil-ripple-css.ripple-sm {
+    width: 30px;
+    height: 30px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    margin: 0;
+}
+.entercode .uil-ripple-css.ripple-sm div {
+    border-width: 2px;
+}
+.entercode .help-block {
+    margin-bottom: 0;
+}
+.entercode .help-block.is-validating-serial {
+  position: relative;
+  padding-top: 6px;
+  text-indent: 35px;
+}
+/* end - enter form */

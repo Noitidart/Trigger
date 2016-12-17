@@ -272,6 +272,15 @@ function pages_state(state={}, action) {
 }
 
 // SERIALS ACTIONS AND CREATORS AND REDUCER
+const ADD_SERIAL = 'ADD_SERIAL';
+function addSerial(serial, buyqty) {
+	return {
+		type: ADD_SERIAL,
+		serial,
+        buyqty
+	}
+}
+
 function serials(state=hydrant.stg.pref_serials, action) {
 	switch (action.type) {
 		case SET_MAIN_KEYS: {
@@ -279,6 +288,17 @@ function serials(state=hydrant.stg.pref_serials, action) {
 			let { [reducer]:reduced } = action.obj_of_mainkeys;
 			return reduced || state;
 		}
+        case ADD_SERIAL: {
+            let { serial, buyqty } = action;
+
+			let newstate = { ...state, [serial]:buyqty };
+
+			callInBackground('storageCall', {aArea:'local',aAction:'set',aKeys:{
+				pref_serials: newstate
+			}});
+
+			return newstate;
+        }
 		default:
 			return state;
 	}
@@ -637,16 +657,73 @@ var ModalContentComponentEnterCode = React.createClass({ // need var due to link
 		let { closeModal } = this.props;
 		closeModal();
 	},
+    modModalData(newdata) {
+        // newdata - object
+        let { modal:oldmodal } = this.props;
+        let modal = {
+            ...oldmodal,
+            data: {
+                ...oldmodal.data,
+                ...newdata
+            }
+        };
+        store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
+    },
+    async gotoEnabled(buyqty) {
+        let { closeModal, modal:{data:{ toggleEnable }} } = this.props;
+
+        toggleEnable(); // enable the hotkey
+
+        closeModal();
+        await promiseTimeout(300); // wait for close anim
+
+        let serials = store.getState().serials;
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+
+        createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+            title: 'Hotkey Enabled',
+            msg: `Thank you! The hotkey was enabled. The code was accepted and added ${buyqty} extra enabled hotkeys. You can now enable up to ${max_enable_count} hotkeys.`,
+            ok: null,
+            cancel: { label:browser.i18n.getMessage('close') }
+        });
+    },
 	onOk(e) {
 		if (!stopClickAndCheck0(e)) return;
-		let { closeModal } = this.props;
-		closeModal();
+		// let { closeModal } = this.props;
+		// closeModal();
+        this.modModalData({ form_validity:'IS_VALIDATING_SERIAL' });
+
+        let serial = document.getElementById('entered_code').value; // no need to trim, exe does the trimming
+        setTimeout(() => {
+            callInExe('validateSerial', serial, newvalidity => {
+                let { isvalid, buyqty, reason } = newvalidity;
+                if (isvalid) {
+                    // alert('enable the hotkey and let him know how many more hotkeys he just added, and his new total');
+                    store.dispatch(addSerial(serial, buyqty));
+                    this.gotoEnabled(buyqty);
+                } else {
+                    this.modModalData({ form_validity:reason });
+                    document.getElementById('entered_code').focus();
+                }
+            });
+        }, 1000); // so i can show the loader animation
 	},
     componentDidMount() {
         document.getElementById('entered_code').focus();
     },
+    hideInvalidOnChange() {
+        this.modModalData({ form_validity:undefined });
+    },
 	render() {
         let { modal } = this.props;
+
+        let { form_validity } = modal.data;
+        // form_validity - IS_VALIDATING_SERIAL, else: it is reason for IS_INVALID_SERIAL
+
+        let is_validating_serial = form_validity == 'IS_VALIDATING_SERIAL';
+
+        let is_invalid_serial = form_validity && form_validity != 'IS_VALIDATING_SERIAL'
+        let invalid_reason = is_invalid_serial && form_validity;
 
 		return React.createElement('div', { className:'modal-content' },
 			React.createElement('div', { className:'modal-header' },
@@ -656,13 +733,21 @@ var ModalContentComponentEnterCode = React.createClass({ // need var due to link
 				),
 				React.createElement('h4', { className:'modal-title' }, browser.i18n.getMessage('title_entercode')),
 			),
-			React.createElement('div', { className:'modal-body' },
+			React.createElement('div', { className:'modal-body entercode' },
 				React.createElement('p', undefined, browser.i18n.getMessage('sentence1_entercode')),
-                React.createElement('input', { className:'form-control', type:'text', id:'entered_code' }),
+                React.createElement('div', { className:'has-feedback' + (is_invalid_serial ? ' has-error' : '') },
+                    React.createElement('input', { className:'form-control', type:'text', id:'entered_code', disabled:is_validating_serial, onChange:(is_invalid_serial && this.hideInvalidOnChange) }),
+                    is_invalid_serial && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
+                    is_validating_serial && React.createElement('small', { className:'help-block is-validating-serial' },
+                        React.createElement('div', { className:'uil-ripple-css ripple-sm' }, React.createElement('div'), React.createElement('div')),
+                        'Validating code and enabling extra hotkeys...'
+                    ),
+                    is_invalid_serial && React.createElement('small', { className:'help-block' }, `The code is invalid. Reason: ${invalid_reason}`)
+                )
 			),
 			React.createElement('div', { className:'modal-footer' },
 				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('dismiss_entercode')),
-				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk }, browser.i18n.getMessage('confirm_entercode'))
+				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk, disabled:is_validating_serial }, browser.i18n.getMessage('confirm_entercode'))
 			)
 		);
 	}
@@ -691,7 +776,7 @@ var ModalContentComponentInformTab = ReactRedux.connect(
 				React.createElement('h4', { className:'modal-title' }, 'Transaction Tab Opened'),
 			),
 			React.createElement('div', { className:'modal-body' },
-				(this.init_max_enable_count === max_enable_count) && React.createElement('p', undefined, 'Paypal was launched in a new tab. Please complete the the purchase there. The purhcase will get automatically detected and hotkeys added. You can leave this dialog opened to stay updated on the process.'),
+				(this.init_max_enable_count === max_enable_count) && React.createElement('p', undefined, 'Paypal was launched in a new tab. Please complete the the purchase there. The purhcase will get automatically detected and hotkeys added.'),
 				(this.init_max_enable_count !== max_enable_count) && React.createElement('p', undefined,
                     'Thank you for your purchase! You now can now enable a total of ',
                     React.createElement('b', undefined, max_enable_count + ' hotkeys')
@@ -816,10 +901,10 @@ var ModalContentComponentBuy = ReactRedux.connect( // need var due to link884777
     },
     async gotoEnter(e) {
         if (!stopClickAndCheck0(e)) return;
-        let { closeModal } = this.props;
+        let { closeModal, modal:{data:{ toggleEnable }} } = this.props;
         closeModal();
         await promiseTimeout(300);
-        createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode', data:{} })
+        createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode', data:{toggleEnable} })
     },
     setBuyQty(aBuyQty) {
         // aBuyQty must be number
@@ -850,7 +935,7 @@ var ModalContentComponentBuy = ReactRedux.connect( // need var due to link884777
 			),
 			React.createElement('div', { className:'modal-body' },
 				React.createElement('p', undefined,
-                ...browser.i18n.getMessage('sentence1_maxhotkeysenabled', max_enable_count).split(/<\/?b>/i).map((el, i)=> i % 2 ? React.createElement('b', undefined, el) : el).filter(el => typeof(el) != 'string' ? true : el.length)
+                ...messageDownReactMarkup(browser.i18n.getMessage('sentence1_maxhotkeysenabled', max_enable_count))
             ),
 			React.createElement('p', undefined, browser.i18n.getMessage('sentence2_maxhotkeysenabled').replace('%DOLLA%', '$')),
                 React.createElement(InputNumber, { component:InputNumberBuyForm, buyqty, cursor:'ns-resize', min:1, max:12, dispatcher:this.setBuyQty, defaultValue:buyqty })
@@ -1321,7 +1406,8 @@ const Hotkey = ReactRedux.connect(
 				{
 					content_component: 'ModalContentComponentBuy',
                     data: {
-                        buyqty: 1
+                        buyqty: 1,
+                        toggleEnable: this.toggleEnable
                     }
 					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
 					// template: 'Buy',
@@ -1505,7 +1591,7 @@ const OauthManager = ReactRedux.connect(
 		// rels.push(React.createElement('br'));
 
 		return React.createElement('div', { className:'oauth-manager' },
-			browser.i18n.getMessage('oauth_manager_description'),
+			...messageDownReactMarkup(browser.i18n.getMessage('oauth_manager_description')),
 			Object.entries(nub.oauth).map( ([serviceid, config]) => React.createElement(OauthManagerRow, { serviceid, config, auth:oauth[serviceid], doForget, doAuth }) )
 		);
 	}
@@ -2562,12 +2648,10 @@ const PagePurchase = ReactRedux.connect(
         console.error('triggering validateSerial');
         setTimeout(() => {
             callInExe('validateSerial', serial, newvalidity => {
-                if (newvalidity.isvalid) {
-                    let serials = store.getState().serials;
-                    let newserials = { ...serials };
-                    newserials[serial] = newvalidity.buyqty;
+                let { isvalid, buyqty } = newvalidity;
+                if (isvalid) {
                     console.log('updating serials - PagePurchase component should not refresh');
-                    store.dispatch(setMainKeys({ serials:newserials }));
+                    store.dispatch(addSerial(serial, buyqty));
                 }
                 store.dispatch(modPageState(pathname, { validity:newvalidity }));
             });
@@ -2589,7 +2673,7 @@ const PagePurchase = ReactRedux.connect(
         let validity_desc_rels;
         if (!validity) {
             validity_desc_rels = [
-                'Validating serial and enabling extra hotkeys...',
+                'Validating code and enabling extra hotkeys...',
                 React.createElement('div', { className:'uil-ripple-css' }, React.createElement('div'), React.createElement('div'))
             ];
         } else {
@@ -2601,7 +2685,7 @@ const PagePurchase = ReactRedux.connect(
                     React.createElement('small', undefined, `(${buyqty} extra enabled hotkeys was added)`)
                 ];
             } else {
-                validity_desc_rels = [`The serial failed to validate. Reason: ${reason}`];
+                validity_desc_rels = [`The code is invalid. Reason: ${reason}`];
             }
         }
 
@@ -2802,5 +2886,20 @@ function allowDownAndCheck0(e) {
 	// e.preventDefault();
   setTimeout(()=>document.activeElement.blur(), 0);
 	return e.button === 0 ? true : false;
+}
+function messageDownReactMarkup(str) {
+    // takes a string 'Hi <B>rawr</B>!' and returns a bolded react element in the middle
+    return (
+        str
+        .split(/<\/?b>/i)
+        .map((el, i) => {
+            if (i % 2) {
+                return React.createElement('b', undefined, el);
+            } else {
+                return el;
+            }
+        })
+        .filter(el => typeof(el) != 'string' ? true : el.length)
+    );
 }
 // end - specific helpers
