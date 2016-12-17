@@ -44,7 +44,8 @@ var nub = {
 				// filesystem-like stuff is prefixied with "fs_"
 		mem_lastversion: '-1', // indicates not installed - the "last installed version"
 		mem_oauth: {},
-		pref_hotkeys: []
+		pref_hotkeys: [],
+        pref_serials: {} // {serial:qty} // added only if valid, but users can be bad and add stuff here, which will allow gui enabling more then allowed, but the exe will not enable more
 	},
 	oauth: { // config
 		github: {
@@ -55,7 +56,10 @@ var nub = {
 			dotname: 'login', // `dotid` and `dotname` are dot paths in the `mem_oauth` entry. `dotid` is meant to point to something that uniquely identifies that account across all accounts on that oauth service's web server
 			dotid: 'id'
 		}
-	}
+	},
+    data: {
+        min_enable_count: 3
+    }
 };
 formatNubPaths();
 
@@ -68,6 +72,7 @@ var callInExe = Comm.callInX2.bind(null, 'gExeComm', null, null); // cannot use 
 var callInBootstrap = Comm.callInX2.bind(null, gBsComm, null, null);
 var callInMainworker = Comm.callInX2.bind(null, gBsComm, 'callInMainworker', null);
 var callInNative; // set in preinit, if its android, it is eqaul to callInMainworker, else it is equal to callInExe
+let callIn = (...args) => new Promise(resolve => window['callIn' + args.shift()](...args, val=>resolve(val))); // must pass undefined for aArg if one not provided, due to my use of spread here. had to do this in case first arg is aMessageManagerOrTabId
 
 // start - init
 async function preinit() {
@@ -244,7 +249,7 @@ async function preinit() {
 	}
 }
 
-function init() {
+async function init() {
 	// after receiving nub
 	console.log('in init, nub:', nub);
 
@@ -263,13 +268,44 @@ function init() {
 			break;
 	}
 
+    // add all the serials
+    let max_enabled_count = nub.data.min_enable_count;
+    for (let [a_serial, a_buyqty] of Object.entries(nub.stg.pref_serials)) {
+        let validity = await callIn('Exe', 'validateSerial', a_serial);
+        let { isvalid, buyqty } = validity;
+        if (isvalid) {
+            if (a_buyqty !== buyqty) {
+                await addSerial({serial:a_serial, buyqty:a_buyqty});
+            }
+            max_enabled_count += buyqty;
+        } else {
+            await removeSerial(a_serial);
+        }
+	}
+
+    console.log('max_enabled_count:', max_enabled_count);
+    // make sure no more then max_enabled_count are enabled (in case max_enabled_count is now less due to invalid keys)
+    let hotkeys = nub.stg.pref_hotkeys;
+    let enabled_hotkeys = hotkeys.filter(a_hotkey => a_hotkey.enabled);
+    if (enabled_hotkeys.length > max_enabled_count) {
+        let to_disable_cnt = enabled_hotkeys.length - max_enabled_count;
+        console.log('starting to_disable_cnt:', to_disable_cnt);
+        enabled_hotkeys.reverse();
+        for (let enabled_hotkey of enabled_hotkeys) {
+            enabled_hotkey.enabled = false;
+            console.log('to_disable_cnt:', to_disable_cnt);
+            if (!--to_disable_cnt) break;
+        }
+        console.log('ending to_disable_cnt:', to_disable_cnt);
+        await storageCall('local', 'set', { pref_hotkeys:hotkeys });
+        console.log('ok disabling done');
+    }
+
 	// add all the hotkeys
-	for (let hotkey of nub.stg.pref_hotkeys) {
+	for (let hotkey of hotkeys) {
 		if (hotkey.enabled) {
-			callInExe('addHotkey', {
-				combo: hotkey.combo,
-				filename: hotkey.command.filename
-			});
+            let { combo, command:{ filename } } = hotkey;
+			callInExe('addHotkey', { combo, filename });
 		}
 	}
 }
@@ -303,6 +339,17 @@ function onBrowserActionClicked() {
 	addTab(nub.path.pages + 'app.html');
 }
 // end - browseraction
+async function addSerial({serial,buyqty}) {
+    let serials = nub.stg.pref_serials;
+    let newserials = {...serials, [serial]:buyqty };
+    await storageCall('local', 'set', { pref_serials:newserials });
+}
+async function removeSerial(serial) {
+    let serials = nub.stg.pref_serials;
+    let newserials = {...serials};
+    delete newserials[serial];
+    await storageCall('local', 'set', { pref_serials:newserials });
+}
 function calcHash({msg, key, base64}) {
     return CryptoJS.HmacSHA1(msg, key).toString(base64 ? CryptoJS.enc.Base64 : undefined);
 }

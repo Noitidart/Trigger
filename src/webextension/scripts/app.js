@@ -66,6 +66,7 @@ let hydrant = {
 	stg: {
 		// set defaults here, as if it never has been set with `storageCall('storaget', 'set')` then `fetchData` will get back an empty object
 		pref_hotkeys: [],
+        pref_serials: {},
 		mem_oauth: {} // github, github_inactive
 	}
 };
@@ -107,14 +108,15 @@ function clearPageStates(pathnames, namevalues) {
 }
 
 // loadPage - clears any saved state for the new path to load
-function loadPage(pathname, namevalues) {
+function loadPage(relativeurl, namevalues) {
 	// TODO: MAYBE: namevalues - what to set the pagestate to before loading, it replaces the old state with this one
 
+    let pathname = relativeurl.search(/[?#]/) > -1 ? relativeurl.substr(0, relativeurl.search(/[?#]/)) : relativeurl;
 	store.dispatch(clearPageStates(pathname, namevalues));
 
 	// i dont think i need async, as the store.dispatch should complete everything synchronously
-	// setTimeout(()=>ReactRouter.browserHistory.push(pathname), 0); // setTimeout so that it happens after the redux state is update is comitted, as that should happen synchronously from here // link393485
-	ReactRouter.browserHistory.push(pathname);
+	// setTimeout(()=>ReactRouter.browserHistory.push(relativeurl), 0); // setTimeout so that it happens after the redux state is update is comitted, as that should happen synchronously from here // link393485
+	ReactRouter.browserHistory.push(relativeurl);
 
 }
 
@@ -169,7 +171,7 @@ function createModal(pathname, modal) {
 }
 
 let NAG_NEXT_ID = 0;
-const NAG_DURATION_MS = 15 * 1000;
+const NAG_DURATION_MS = 5 * 1000;
 function createNag(pathname, nag) {
 	/*
 	nag {
@@ -263,6 +265,19 @@ function pages_state(state={}, action) {
 			else console.log('OK modPageState: Something changed in page state of ' + pathname + '. new pagestate:', newstate[pathname], 'old pagestate:', pagestate);
 
 			return newstate || state;
+		}
+		default:
+			return state;
+	}
+}
+
+// SERIALS ACTIONS AND CREATORS AND REDUCER
+function serials(state=hydrant.stg.pref_serials, action) {
+	switch (action.type) {
+		case SET_MAIN_KEYS: {
+			const reducer = 'serials';
+			let { [reducer]:reduced } = action.obj_of_mainkeys;
+			return reduced || state;
 		}
 		default:
 			return state;
@@ -375,6 +390,7 @@ function oauth(state=hydrant.stg.mem_oauth, action) {
 }
 
 let app = Redux.combineReducers({
+    serials,
 	hotkeys,
 	oauth,
 	pages_state
@@ -579,7 +595,7 @@ const Modal = React.createClass({
 		let { modal } = this.props;
 
 		let { content_component, title, msg, close=true, ok={label:browser.i18n.getMessage('okay')}, cancel={label:browser.i18n.getMessage('cancel')} } = modal; // mapped state
-    // ok and cancel are objects with label, onClick keys
+        // ok and cancel are objects with label, onClick keys
 		let ok_label = ok && ok.label;
 		let cancel_label = cancel && cancel.label;
 		// console.log(title, body, ok, cancel, 'props:', this.props, 'props:', this.props);
@@ -626,11 +642,11 @@ var ModalContentComponentEnterCode = React.createClass({ // need var due to link
 		let { closeModal } = this.props;
 		closeModal();
 	},
-  componentDidMount() {
-    document.getElementById('entered_code').focus();
-  },
+    componentDidMount() {
+        document.getElementById('entered_code').focus();
+    },
 	render() {
-    let { modal } = this.props;
+        let { modal } = this.props;
 
 		return React.createElement('div', { className:'modal-content' },
 			React.createElement('div', { className:'modal-header' },
@@ -642,7 +658,7 @@ var ModalContentComponentEnterCode = React.createClass({ // need var due to link
 			),
 			React.createElement('div', { className:'modal-body' },
 				React.createElement('p', undefined, browser.i18n.getMessage('sentence1_entercode')),
-        React.createElement('input', { className:'form-control', type:'text', id:'entered_code' }),
+                React.createElement('input', { className:'form-control', type:'text', id:'entered_code' }),
 			),
 			React.createElement('div', { className:'modal-footer' },
 				React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('dismiss_entercode')),
@@ -651,7 +667,50 @@ var ModalContentComponentEnterCode = React.createClass({ // need var due to link
 		);
 	}
 });
-var ModalContentComponentBuy = React.createClass({ // need var due to link8847777
+var ModalContentComponentInformTab = ReactRedux.connect(
+    function(state, ownProps) {
+        return {
+            serials: state.serials // needed for max_enable_count
+        }
+    }
+)(React.createClass({
+	displayName: 'ModalContentComponentInformTab',
+    render() {
+        let { modal, closeModal, serials } = this.props;
+
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+        if (!this.init_max_enable_count)
+            this.init_max_enable_count = max_enable_count;
+
+		return React.createElement('div', { className:'modal-content' },
+			React.createElement('div', { className:'modal-header' },
+				React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:closeModal },
+					React.createElement('span', { 'aria-hidden':'true'}, '×'),
+					React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+				),
+				React.createElement('h4', { className:'modal-title' }, 'Transaction Tab Opened'),
+			),
+			React.createElement('div', { className:'modal-body' },
+				(this.init_max_enable_count === max_enable_count) && React.createElement('p', undefined, 'Paypal was launched in a new tab. Please complete the the purchase there. The purhcase will get automatically detected and hotkeys added. You can leave this dialog opened to stay updated on the process.'),
+				(this.init_max_enable_count !== max_enable_count) && React.createElement('p', undefined,
+                    'Thank you for your purchase! You now can now enable a total of ',
+                    React.createElement('b', undefined, max_enable_count + ' hotkeys')
+                )
+            ),
+			React.createElement('div', { className:'modal-footer' },
+				React.createElement('button', { className:'btn btn-default', onClick:closeModal }, 'Close')
+			)
+		);
+    }
+}));
+
+var ModalContentComponentBuy = ReactRedux.connect( // need var due to link8847777
+    function(state, ownProps) {
+        return {
+            serials: state.serials // needed for max_enable_count
+        }
+    }
+)(React.createClass({
 	displayName: 'ModalContentComponentBuy',
 	onCancel(e) {
 		if (!stopClickAndCheck0(e)) return;
@@ -664,110 +723,122 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 
 		let { closeModal, modal } = this.props;
 		closeModal();
-    await promiseTimeout(300); // wait for close anim
-    this.gotoInitPayapl();
-  },
-  async gotoInitPayapl() {
-    let { closeModal, modal } = this.props;
+        await promiseTimeout(300); // wait for close anim
+        this.gotoInitPayapl();
+    },
+    async gotoInitPayapl() {
+        let { closeModal, modal } = this.props;
 
-    createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
-      title: browser.i18n.getMessage('title_startrans'),
-      close: false,
-      msg: browser.i18n.getMessage('message_startrans'),
-      ok: null,
-      cancel: null
-    });
+        createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+            title: browser.i18n.getMessage('title_startrans'),
+            close: false,
+            msg: browser.i18n.getMessage('message_startrans'),
+            ok: null,
+            cancel: null
+        });
 
-    await promiseTimeout(300); // wait create anim
+        await promiseTimeout(300); // wait create anim
 
-    let paypal_avail_locales = ['da_DK', 'he_IL', 'id_ID', 'ja_JP', 'no_NO', 'pt_BR', 'ru_RU', 'sv_SE', 'th_TH', 'zh_CN', 'zh_HK', 'zh_TW', 'AU', 'AT', 'BE', 'BR', 'CA', 'CH', 'CN', 'DE', 'ES', 'GB', 'FR', 'IT', 'NL', 'PL', 'PT', 'RU', 'US']; // as of 121216 taken from here - https://developer.paypal.com/docs/api/payment-experience/#definition-presentation
-    // let wanted_locales = [...new Set([gUserLocales, gExtLocale].map(el => el.toLowerCase()))]; // lowered and deduped
-    let wanted_locales = [...new Set([gExtLocale].map(el => el.toLowerCase()))]; // lowered and deduped
-    let pplocale = findClosestLocale(paypal_avail_locales, wanted_locales) || 'US'; // 'US' is an improper locale code by paypal, it is just a country code which is real weird
-    console.log('wanted_locales:', wanted_locales, 'pplocale:', pplocale);
+        let paypal_avail_locales = ['da_DK', 'he_IL', 'id_ID', 'ja_JP', 'no_NO', 'pt_BR', 'ru_RU', 'sv_SE', 'th_TH', 'zh_CN', 'zh_HK', 'zh_TW', 'AU', 'AT', 'BE', 'BR', 'CA', 'CH', 'CN', 'DE', 'ES', 'GB', 'FR', 'IT', 'NL', 'PL', 'PT', 'RU', 'US']; // as of 121216 taken from here - https://developer.paypal.com/docs/api/payment-experience/#definition-presentation
+        // let wanted_locales = [...new Set([gUserLocales, gExtLocale].map(el => el.toLowerCase()))]; // lowered and deduped
+        let wanted_locales = [...new Set([gExtLocale].map(el => el.toLowerCase()))]; // lowered and deduped
+        let pplocale = findClosestLocale(paypal_avail_locales, wanted_locales) || 'US'; // 'US' is an improper locale code by paypal, it is just a country code which is real weird
+        console.log('wanted_locales:', wanted_locales, 'pplocale:', pplocale);
 
-    let { data:{buyqty} } = modal;
+        let { data:{buyqty} } = modal;
 
-    try {
-      let qparams = {locale:pplocale, qty:buyqty, mh:await callIn('Exe', 'getMh', undefined)};
-      let qstr = queryStringDom(qparams);
-      console.log('qstr:', qstr);
-      let xpppinit = await xhrPromise('https://trigger-community.sundayschoolonline.org/paypal.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
+        try {
+            let qparams = {locale:pplocale, qty:buyqty, mh:await callIn('Exe', 'getMh', undefined)};
+            let qstr = queryStringDom(qparams);
+            console.log('qstr:', qstr);
+            let xpppinit = await xhrPromise('https://trigger-community.sundayschoolonline.org/paypal.php?' + qstr, { method:'GET', restype:'json' }); // xp_paypal_init
 
-      let { xhr:{response, status} } = xpppinit;
+            let { xhr:{response, status} } = xpppinit;
 
-      if (status !== 200) {
-        throw xpppinit;
-      } else {
-        // no need to close and wait, as `gotoEnter` will handle that
-        // closeModal();
-        // await promiseTimeout(300);
-        // this.gotoPaypalFrame(response.approval_url);
-        let url = response.approval_url;
-        callInBackground('addTab', {url, index_offset:1});
-        this.gotoEnter();
-      }
-    } catch(xperr) {
+            if (status !== 200) {
+                throw xpppinit;
+            } else {
+                // this.gotoPaypalFrame(response.approval_url);
 
-      console.log('xperr:', xperr);
-      let { xhr:{response, status}, reason } = xperr;
+                // no need to close and wait, as `gotoEnter` will handle that
+                // closeModal();
+                // await promiseTimeout(300);
+                let url = response.approval_url;
+                callInBackground('addTab', {url, index_offset:1});
+                // this.gotoEnter();
+                this.gotoInformTab();
+            }
+        } catch(xperr) {
+            console.log('xperr:', xperr);
+            let { xhr:{response, status}, reason } = xperr;
 
-      closeModal();
+            closeModal();
+            await promiseTimeout(300); // wait close
 
-      await promiseTimeout(300); // wait close
+            createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+                title: browser.i18n.getMessage('title_failtrans'),
+                msg: React.createElement('p', undefined,
+                    browser.i18n.getMessage('message_failtrans'),
+                    React.createElement('br'),
+                    React.createElement('br'),
+                    React.createElement('b', undefined, browser.i18n.getMessage('load_reason') + ' '),
+                    reason,
+                    React.createElement('br'),
+                    React.createElement('b', undefined, browser.i18n.getMessage('status') + ' '),
+                    status,
+                    React.createElement('br'),
+                    React.createElement('b', undefined, browser.i18n.getMessage('response') + ' '),
+                    JSON.stringify(response)
+                ),
+                ok: { label:browser.i18n.getMessage('try_again'), onClick:this.onOk }
+            });
+        }
+    },
+    // gotoPaypalFrame(url) {
+    //     createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
+    //         title: 'Paypal',
+    //         msg: React.createElement('p', undefined,
+    //             'Please complete the Paypal process in the frame below.',
+    //             React.createElement('br'),
+    //             React.createElement('br'),
+    //             React.createElement('iframe', { src:url, width:'500px', height:'600px' })
+    //         ),
+    //         close: false,
+    //         ok: null,
+    //         cancel: null
+    //     });
+    // },
+    async gotoInformTab() {
+        let { closeModal } = this.props;
+        closeModal();
+        await promiseTimeout(300);
+        createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentInformTab', data:{} })
+    },
+    async gotoEnter(e) {
+        if (!stopClickAndCheck0(e)) return;
+        let { closeModal } = this.props;
+        closeModal();
+        await promiseTimeout(300);
+        createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode', data:{} })
+    },
+    setBuyQty(aBuyQty) {
+        // aBuyQty must be number
 
-      createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
-        title: browser.i18n.getMessage('title_failtrans'),
-        msg: React.createElement('p', undefined,
-          browser.i18n.getMessage('message_failtrans'),
-          React.createElement('br'),
-          React.createElement('br'),
-          React.createElement('b', undefined, browser.i18n.getMessage('load_reason') + ' '),
-          reason,
-          React.createElement('br'),
-          React.createElement('b', undefined, browser.i18n.getMessage('status') + ' '),
-          status,
-          React.createElement('br'),
-          React.createElement('b', undefined, browser.i18n.getMessage('response') + ' '),
-          JSON.stringify(response)
-        ),
-        ok: { label:browser.i18n.getMessage('try_again'), onClick:this.onOk }
-      });
-    }
-  },
-  gotoPaypalFrame(url) {
-    createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, {
-      title: 'Paypal',
-      msg: React.createElement('p', undefined,
-        'Please complete the Paypal process in the frame below.',
-        React.createElement('br'),
-        React.createElement('br'),
-        React.createElement('iframe', { src:url, width:'500px', height:'600px' })
-      ),
-      close: false,
-      ok: null,
-      cancel: null
-    });
-  },
-  async gotoEnter(e) {
-    if (!stopClickAndCheck0(e)) return;
-		let { closeModal } = this.props;
-		closeModal();
-    await promiseTimeout(300);
-    createModal(ReactRouter.browserHistory.getCurrentLocation().pathname, { content_component:'ModalContentComponentEnterCode' })
-  },
-  setBuyQty(aBuyQty) {
-    // aBuyQty must be number
-
-    let { modal:oldmodal } = this.props;
-    let modal = { ...oldmodal, data: { ...oldmodal.data,
-        buyqty: aBuyQty
-    }};
-		store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
-  },
+        let { modal:oldmodal } = this.props;
+        let modal = {
+            ...oldmodal,
+            data: {
+                ...oldmodal.data,
+                buyqty: aBuyQty
+            }
+        };
+        store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
+    },
 	render() {
-    let { modal } = this.props;
-    let { data:{buyqty} } = modal;
+        let { modal, serials } = this.props;
+        let { data:{buyqty} } = modal;
+
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
 
 		return React.createElement('div', { className:'modal-content' },
 			React.createElement('div', { className:'modal-header' },
@@ -779,10 +850,10 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 			),
 			React.createElement('div', { className:'modal-body' },
 				React.createElement('p', undefined,
-          ...browser.i18n.getMessage('sentence1_maxhotkeysenabled', MAX_HOTKEY_COUNT).split(/<\/?b>/i).map((el, i)=> i % 2 ? React.createElement('b', undefined, el) : el).filter(el => typeof(el) != 'string' ? true : el.length)
-        ),
-				React.createElement('p', undefined, browser.i18n.getMessage('sentence2_maxhotkeysenabled').replace('%DOLLA%', '$')),
-        React.createElement(InputNumber, { component:InputNumberBuyForm, buyqty, cursor:'ns-resize', min:1, max:12, dispatcher:this.setBuyQty, defaultValue:buyqty })
+                ...browser.i18n.getMessage('sentence1_maxhotkeysenabled', max_enable_count).split(/<\/?b>/i).map((el, i)=> i % 2 ? React.createElement('b', undefined, el) : el).filter(el => typeof(el) != 'string' ? true : el.length)
+            ),
+			React.createElement('p', undefined, browser.i18n.getMessage('sentence2_maxhotkeysenabled').replace('%DOLLA%', '$')),
+                React.createElement(InputNumber, { component:InputNumberBuyForm, buyqty, cursor:'ns-resize', min:1, max:12, dispatcher:this.setBuyQty, defaultValue:buyqty })
 			),
 			React.createElement('div', { className:'modal-footer' },
 				React.createElement('button', { className:'btn btn-link pull-left', onClick:this.gotoEnter }, browser.i18n.getMessage('havecode_maxhotkeysenabled')),
@@ -791,58 +862,58 @@ var ModalContentComponentBuy = React.createClass({ // need var due to link884777
 			)
 		);
 	}
-});
+}));
 const InputNumberBuyForm = React.createClass({
-  displayName: 'InputNumberBuyForm',
-  showTimedCrementOverlay() {
-    // needed because once hit ismaxish or isminish the buttons get disabled, which dont trigger the onMouseUp events on it, or even on the body as that is under it. needed something over it.
-    let overlay = this.overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed; height:100vh; width:100vw; top:0; left:0; z-index:2000;';
-    document.documentElement.appendChild(overlay);
-    overlay.addEventListener('mouseup', this.removeTimedCrementOverlay, false);
-  },
-  removeTimedCrementOverlay() {
-    let { timedCrementStop } = this.props;
-    timedCrementStop();
-    this.overlay.parentNode.removeChild(this.overlay);
-    delete this.overlay;
-  },
-  onMinus(e) {
-    if (!allowDownAndCheck0(e)) return;
-    let { timedCrement } = this.props;
-    this.showTimedCrementOverlay();
-    timedCrement(-0);
-  },
-  onPlus(e) {
-    if (!allowDownAndCheck0(e)) return;
-    let { timedCrement } = this.props;
-    this.showTimedCrementOverlay();
-    timedCrement(0);
-  },
-  render() {
-    let { children, domprops_mouseable, domprops_text, isinvalid, ismaxish, isminish } = this.props; // InputNumber specific props
-    let { buyqty } = this.props; // props that skip InputNumber and are meant to be sent straght to here
+    displayName: 'InputNumberBuyForm',
+    showTimedCrementOverlay() {
+        // needed because once hit ismaxish or isminish the buttons get disabled, which dont trigger the onMouseUp events on it, or even on the body as that is under it. needed something over it.
+        let overlay = this.overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed; height:100vh; width:100vw; top:0; left:0; z-index:2000;';
+        document.documentElement.appendChild(overlay);
+        overlay.addEventListener('mouseup', this.removeTimedCrementOverlay, false);
+    },
+    removeTimedCrementOverlay() {
+        let { timedCrementStop } = this.props;
+        timedCrementStop();
+        this.overlay.parentNode.removeChild(this.overlay);
+        delete this.overlay;
+    },
+    onMinus(e) {
+        if (!allowDownAndCheck0(e)) return;
+        let { timedCrement } = this.props;
+        this.showTimedCrementOverlay();
+        timedCrement(-0);
+    },
+    onPlus(e) {
+        if (!allowDownAndCheck0(e)) return;
+        let { timedCrement } = this.props;
+        this.showTimedCrementOverlay();
+        timedCrement(0);
+    },
+    render() {
+        let { children, domprops_mouseable, domprops_text, isinvalid, ismaxish, isminish } = this.props; // InputNumber specific props
+        let { buyqty } = this.props; // props that skip InputNumber and are meant to be sent straght to here
 
-    return React.createElement('div', { id:'buy_field', className:'form-group' + (isinvalid ? ' has-error' : '') },
-      children, // required by InputNumber crossfile-link92828222
-      React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, browser.i18n.getMessage('quantity_maxhotkeysenabled')),
-      React.createElement('b', { className:'pull-right', ...domprops_mouseable }, browser.i18n.getMessage('totalprice_maxhotkeysenabled', buyqty).replace('%DOLLA%', '$')),
-      React.createElement('div', { className:'input-group' },
-        React.createElement('input', { className:'form-control', type:'text', ...domprops_text }),
-        isinvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
-        React.createElement('div', { className:'input-group-btn' },
-          React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onMinus, disabled:isminish },
-            React.createElement('span', { className:'glyphicon glyphicon-minus'})
-          ),
-          React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onPlus, disabled:ismaxish },
-            React.createElement('span', { className:'glyphicon glyphicon-plus' })
-          )
-        )
-      ),
-      isinvalid && React.createElement('small', { className:'help-block' }, 'Must be a number between 1 and 12')
-    );
-  }
-})
+        return React.createElement('div', { id:'buy_field', className:'form-group' + (isinvalid ? ' has-error' : '') },
+            children, // required by InputNumber crossfile-link92828222
+            React.createElement('label', { htmlFor:'buy_qty', className:'pull-left', ...domprops_mouseable }, browser.i18n.getMessage('quantity_maxhotkeysenabled')),
+            React.createElement('b', { className:'pull-right', ...domprops_mouseable }, browser.i18n.getMessage('totalprice_maxhotkeysenabled', buyqty).replace('%DOLLA%', '$')),
+            React.createElement('div', { className:'input-group' },
+                React.createElement('input', { className:'form-control', type:'text', ...domprops_text }),
+                isinvalid && React.createElement('i', { className:'form-control-feedback bv-no-label glyphicon glyphicon-remove' }),
+                React.createElement('div', { className:'input-group-btn' },
+                    React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onMinus, disabled:isminish },
+                        React.createElement('span', { className:'glyphicon glyphicon-minus'})
+                    ),
+                    React.createElement('button', { className:'btn btn-default', type:'button', onMouseDown:this.onPlus, disabled:ismaxish },
+                        React.createElement('span', { className:'glyphicon glyphicon-plus' })
+                    )
+                )
+            ),
+            isinvalid && React.createElement('small', { className:'help-block' }, 'Must be a number between 1 and 12')
+        );
+    }
+});
 // end - Modal and ModalBackdrop
 // start - Header
 const Header = React.createClass({
@@ -855,7 +926,7 @@ const Header = React.createClass({
 			'/add': ['myhotkeys', 'addcommand'],
 			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
 			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
-      '/purchase': ['myhotkeys', 'purchase']
+            '/purchase': ['myhotkeys', 'purchase']
 			// '/auth': ['auth'], // special case
 			// '/edit': ['myhotkeys', 'editcommand'], // special case
 			// '/versions': ['myhotkeys', 'versionscommand'] // special case
@@ -869,11 +940,11 @@ const Header = React.createClass({
 			pathcrumbs[pathname] = ['myhotkeys', browser.i18n.getMessage(`crumb_${subcrumb}command`, name)]
 		}
 
-    // special case - /auth
-    if (pathname == '/auth') {
-      let { serviceid } = query;
-      pathcrumbs[pathname] = [ browser.i18n.getMessage('crumb_auth', browser.i18n.getMessage('servicename_' + serviceid)) ];
-    }
+        // special case - /auth
+        if (pathname == '/auth') {
+            let { serviceid } = query;
+            pathcrumbs[pathname] = [ browser.i18n.getMessage('crumb_auth', browser.i18n.getMessage('servicename_' + serviceid)) ];
+        }
 
 		let crumbs = pathcrumbs[pathname] || ['invalid'];
 
@@ -888,10 +959,9 @@ const Header = React.createClass({
 		return React.createElement('div', { className:'row' },
 			React.createElement('div', { className:'col-lg-12' },
 				React.createElement('h1', { className:'page-header' },
-					'Trigger',
-					' ',
-					...crumbs
-				)
+                    browser.i18n.getMessage('addon_name') + ' ',
+                    ...crumbs
+                )
 			)
 		);
 	}
@@ -931,14 +1001,14 @@ const PageMyHotkeys = ReactRedux.connect(
 }));
 
 // hotkey elements
-let MAX_HOTKEY_COUNT = 3;
 const Hotkey = ReactRedux.connect(
 	function(state, ownProps) {
 		let { pages_state:{'/':pagestate={}} } = state;
 
 		return {
 			recording: pagestate.recording, // { filename-of command to find hotkey, current-current recording }
-			hotkeys: state.hotkeys // used to determine if already three thigns enabled
+			hotkeys: state.hotkeys, // used to determine if already three thigns enabled
+            serials: state.serials // for determining max_enable_count
 		}
 	}
 )(React.createClass({
@@ -1235,22 +1305,24 @@ const Hotkey = ReactRedux.connect(
 
 		let { dispatch } = this.props; // redux
 		let { hotkey } = this.props;
-		let { hotkeys } = this.props; // mapped state
+		let { hotkeys, serials } = this.props; // mapped state
 
 		let { combo, enabled } = hotkey;
 
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+
 		let hashotkey = !!combo;
 		let isenabled = hotkey.enabled;
-		let allowenable = hashotkey && (isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < MAX_HOTKEY_COUNT);
+		let allowenable = hashotkey && (isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < max_enable_count);
 
 		if (!allowenable) {
 			createModal(
 				ReactRouter.browserHistory.getCurrentLocation().pathname,
 				{
 					content_component: 'ModalContentComponentBuy',
-          data: {
-            buyqty: 1
-          }
+                    data: {
+                        buyqty: 1
+                    }
 					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
 					// template: 'Buy',
 					// body: 'Buy',
@@ -1270,10 +1342,13 @@ const Hotkey = ReactRedux.connect(
 		let newenabled = !hotkey.enabled; // true for enabled, false for disabled
 
 		if (newenabled) {
-			callInExe('addHotkey', {
-				combo: hotkey.combo,
-				filename: hotkey.command.filename
-			});
+			callInExe('addHotkey', { combo:hotkey.combo, filename: hotkey.command.filename }, ({didenable,reason,max_enable_count:max_enable_count_exe}) => {
+                if (!didenable) {
+                    alert(`Failed to enable hotkey.\nReason: ${reason}\nMax Enabled Count: ` + max_enable_count_exe);
+                    let newhotkey = { ...hotkey };
+            		dispatch(editHotkey(newhotkey));
+                }
+            });
 		} else {
 			callInExe('removeHotkey', {
 				filename: hotkey.command.filename
@@ -1285,11 +1360,13 @@ const Hotkey = ReactRedux.connect(
 	},
 	render() {
 		let { hotkey } = this.props;
-		let { recording, hotkeys } = this.props; // mapped state
+		let { recording, hotkeys, serials } = this.props; // mapped state
 
 		let { enabled, combo, command } = hotkey;
 		let { share_unix, filename, content:{group, locales:{[gExtLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
 		// share_unix, filename, group, name, description, code
+
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
 
 		let hashotkey = !!combo;
 
@@ -1304,7 +1381,7 @@ const Hotkey = ReactRedux.connect(
 		let isenabled, allowenable, tooltip_enable, color_enable;
 		if (hashotkey) {
 			isenabled = enabled;
-			allowenable = isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < MAX_HOTKEY_COUNT;
+			allowenable = isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < max_enable_count;
 			tooltip_enable = browser.i18n.getMessage('tooltip_disablehotkey');
 			color_enable = 'danger';
 			if (!isenabled) { // its disabled
@@ -1312,7 +1389,7 @@ const Hotkey = ReactRedux.connect(
 				tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
 				if (!allowenable) color_enable = 'default';
 				// if (allowenable) tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
-				// else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', MAX_HOTKEY_COUNT);
+				// else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', max_enable_count);
 			}
 		}
 
@@ -2426,13 +2503,24 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 // end - PageCommunity
 
 // start - PagePurchase
-const PagePurchase = React.createClass({
+const PagePurchase = ReactRedux.connect(
+	function(state, ownProps) {
+        let { location:{ pathname } } = ownProps; // router
+		let pagestate = state.pages_state[pathname] || {};
+
+		return {
+            // NOTE: never feed in fully pagestate, like line below, just select the stuff from pagestate that this component needs
+			// pagestate: state.pages_state[pathname],
+			validity: pagestate.validity
+		}
+	}
+)(React.createClass({
 	displayName: 'PagePurchase',
     goBack: e => stopClickAndCheck0(e) && loadOldPage('/'),
     async doEmail(e) {
         if (!stopClickAndCheck0(e)) return;
 
-        let { location:{query:{ serial }} } = this.props; // router
+        let { location:{query:{ serial }}, pathname } = this.props; // router
 
         let text = document.getElementById('email_text');
         let btn = document.getElementById('email_btn');
@@ -2461,11 +2549,61 @@ const PagePurchase = React.createClass({
         btn.removeAttribute('disabled');
         text.removeAttribute('disabled');
     },
+    validateIfNeeded() {
+        let { location:{ pathname, query } } = this.props; // router
+        let { serial } = query;
+        let { validity } = this.props; // mapped state
+        let serials = store.getState().serials; // cheat mapped state - because i dont want my component to refresh when serials updated
+
+        if (validity) {
+            return;
+        }
+
+        console.error('triggering validateSerial');
+        setTimeout(() => {
+            callInExe('validateSerial', serial, newvalidity => {
+                if (newvalidity.isvalid) {
+                    let serials = store.getState().serials;
+                    let newserials = { ...serials };
+                    newserials[serial] = newvalidity.buyqty;
+                    console.log('updating serials - PagePurchase component should not refresh');
+                    store.dispatch(setMainKeys({ serials:newserials }));
+                }
+                store.dispatch(modPageState(pathname, { validity:newvalidity }));
+            });
+        }, 1000); // so i can show the loader animation
+    },
     render() {
-    	let { location:{ query }, params } = this.props; // router
-    	console.log('params:', params, 'query:', query);
+    	let { location:{ pathname, query } } = this.props; // router
+    	// console.log('query:', query);
 
         let { serial, error } = query;
+        let { validity } = this.props; // mapped state
+
+        let serials = store.getState().serials; // cheat mapped state - because i dont want my component to refresh when serials updated
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+        console.error('validity:', validity);
+
+        this.validateIfNeeded();
+
+        let validity_desc_rels;
+        if (!validity) {
+            validity_desc_rels = [
+                'Validating serial and enabling extra hotkeys...',
+                React.createElement('div', { className:'uil-ripple-css' }, React.createElement('div'), React.createElement('div'))
+            ];
+        } else {
+            let { isvalid, buyqty, reason } = validity;
+            if (isvalid) {
+                validity_desc_rels = [
+                    `You can now enable a total of ${max_enable_count} hotkeys!`,
+                    React.createElement('br'),
+                    React.createElement('small', undefined, `(${buyqty} extra enabled hotkeys was added)`)
+                ];
+            } else {
+                validity_desc_rels = [`The serial failed to validate. Reason: ${reason}`];
+            }
+        }
 
         return React.createElement('span', undefined,
           React.createElement('div', { className:'row text-center' },
@@ -2484,9 +2622,9 @@ const PagePurchase = React.createClass({
           !error && React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
             React.createElement('p', { className:'lead' }, 'Thank you for your purchase! Your purchase code is:'),
             React.createElement('h1', undefined, serial),
-            React.createElement('p', { className:'lead' }, 'Enter this code enable exta hotkeys.'),
-            React.createElement('p', undefined,
-              'Write this code down in case you need it in the future. You can email yourself this code below:',
+            React.createElement('h2', { style:{marginTop:'35px'} }, ...validity_desc_rels),
+            React.createElement('p', { className:'lead' },
+              'Save this code in case you need it in the future.',
               React.createElement('div', { className:'container-fluid' },
                 React.createElement('form', { className:'navbar-form' },
                   React.createElement('div', { className:'form-group form-group-lg' },
@@ -2501,6 +2639,9 @@ const PagePurchase = React.createClass({
               ),
             ),
             React.createElement('p', { className:'lead' },
+                React.createElement('p', { className:'lead' },
+                  React.createElement('i', undefined, 'To enter this code in the futre, follow the steps below:'),
+                ),
               React.createElement('img', { src:'../images/alreadyhavecode.png', style:{width:'50%'} } ),
               React.createElement('div', { style:{margin:'15px 0 10px 0'} },
                 React.createElement('span', { className:'glyphicon glyphicon-arrow-down'}),
@@ -2514,7 +2655,7 @@ const PagePurchase = React.createClass({
           React.createElement('hr')
     	);
     }
-});
+}));
 // end - PagePurchase
 
 // start - PageAuth
@@ -2600,10 +2741,10 @@ const PageAuth = React.createClass({
 // start - PageInvalid
 const PageInvalid = React.createClass({
 	displayName: 'PageInvalid',
-  gotoMyhotkeys(e) {
-		if (!stopClickAndCheck0(e)) return;
-		loadPage('/');
-  },
+    gotoMyhotkeys(e) {
+    	if (!stopClickAndCheck0(e)) return;
+    	loadPage('/');
+    },
 	render() {
 		let { params } = this.props;
 		console.log('params:', params);
