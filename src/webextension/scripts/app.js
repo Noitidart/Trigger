@@ -2573,7 +2573,7 @@ var ModalContentDiscardConfirm = React.createClass({ // need var due to link8847
 				React.createElement('br'),
 				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_lastline')),
 				React.createElement('br'),
-				React.createElement('button', { className:'diff-switch-btn btn btn-default btn-sm pull-right', onClick:this.switchDiff },
+				React.createElement('button', { className:'diff-switch-btn btn btn-default btn-xs pull-right', onClick:this.switchDiff },
 					React.createElement('span', { className:'glyphicon glyphicon-sort' }),
 					' ' + diff_switch_label
 				),

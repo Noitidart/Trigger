@@ -145,72 +145,87 @@ async function preinit() {
 				// no need to verify host version, as its the one from the chromeworker
 				return 'platinfo got, callInNative set, worker started';
 			} else {
-				try {
-					await new Promise((resolve, reject) => {
-						gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
-					});
-				} catch(first_conn_err) {
-					// exe failed to connect
-					console.error('failed to connect to exe, first_conn_err:', first_conn_err);
-					if (first_conn_err) first_conn_err = first_conn_err.toString(); // because at the time of me writing this, Comm::webext.js does not give an error reason fail, i tried but i couldnt get the error reason, it is only logged to console
+                let didautoupdate = 0;
+                let is_nativeconnect_init = true;
+                while (is_nativeconnect_init || didautoupdate === 1) {
+                    is_nativeconnect_init = false;
+    				try {
+    					await new Promise((resolve, reject) => {
+    						gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
+    					});
+    				} catch(first_conn_err) {
+    					// exe failed to connect
+    					console.error('failed to connect to exe, first_conn_err:', first_conn_err);
+    					if (first_conn_err) first_conn_err = first_conn_err.toString(); // because at the time of me writing this, Comm::webext.js does not give an error reason fail, i tried but i couldnt get the error reason, it is only logged to console
 
-					if (nub.browser.name == 'firefox') {
-						// manifest and exe may not be installed, so try installing
-						try {
-							await new Promise((resolve, reject) => {
-								callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, err => err ? reject(err) : resolve() );
-							})
-						} catch(install_err) {
-							console.error('install_err:', install_err);
-							throw { reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
-						}
+    					if (nub.browser.name == 'firefox') {
+    						// manifest and exe may not be installed, so try installing
+    						try {
+    							await new Promise((resolve, reject) => {
+    								callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, err => err ? reject(err) : resolve() );
+    							})
+    						} catch(install_err) {
+    							console.error('install_err:', install_err);
+    							throw { reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
+    						}
 
-						// ok installed, try re-connecting
-						try {
-							await new Promise((resolve, reject) => {
-								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
-							});
-						} catch(re_conn_err) {
-							throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
-						}
-					} else {
-						throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', first_conn_err) };
-					}
+    						// ok installed, try re-connecting
+    						try {
+    							await new Promise((resolve, reject) => {
+    								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
+    							});
+    						} catch(re_conn_err) {
+    							throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
+    						}
+    					} else {
+    						throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', first_conn_err) };
+    					}
 
-				}
+    				}
 
-				// ok connected
-				// lets verify the exe is for this version of extension, else send it exe from within for self update/downgrade
-				// btw if it gets here, its not android, as if it was android it `return`ed earlier after starting worker
+    				// ok connected
+    				// lets verify the exe is for this version of extension, else send it exe from within for self update/downgrade
+    				// btw if it gets here, its not android, as if it was android it `return`ed earlier after starting worker
 
-				// verify exe version
-				let exeversion = await new Promise( resolve => callInExe('getExeVersion', undefined, val => resolve(val)) );
-				console.log('exeversion:', exeversion);
-				let extversion = nub.self.version;
-				console.log('extversion:', extversion);
-				console.log('equal?');
-				return 'debug remove this'; // debug
-				if (exeversion === extversion) {
-					return 'platinfo got, callInNative set, exe started, exe version is correct';
-				} else {
-					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
-					console.log('as not equal, am fetching exearrbuf');
-					// let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { restype:'arraybuffer' })).response;
-					let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { restype:'arraybuffer' })).xhr.response;
-					// let exebinarystr = new TextDecoder('utf-8').decode(new Uint8Array(exearrbuf));
-					// let exebinarystr = Uint8ArrayToString(new Uint8Array(exearrbuf));
-					let exebinarystr = new TextDecoder('utf-8').decode(exearrbuf);
-					try {
-						console.log('sending exearrbuf to exe');
-						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exebinarystr, applied=>applied===true?resolve(true):reject(applied) )  );
-					} catch(exe_apply_err) {
-						console.error('exe_apply_err:', exe_apply_err);
-						let howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
-						// throw { reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exeversion, extversion, howtofixstr]) }; // debug: commented out
-					}
+    				// verify exe version
+    				let exeversion = await new Promise( resolve => callInExe('getExeVersion', undefined, val => resolve(val)) );
+    				console.log('exeversion:', exeversion);
+    				let extversion = nub.self.version;
+    				console.log('extversion:', extversion);
+    				console.log('equal?');
 
-					return 'platinfo got, callInNative set, exe started, exe self applied';
-				}
+    				if (exeversion === extversion) {
+    					return 'platinfo got, callInNative set, exe started, exe version is correct';
+    				} else {
+    					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
+    					console.log('as not equal, am fetching exearrbuf');
+    					let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { restype:'arraybuffer' })).xhr.response;
+    					// let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { restype:'arraybuffer' })).xhr.response;
+                        let exeuint8str = new Uint8Array(exearrbuf).toString();
+    					try {
+                            if (didautoupdate === 1) {
+                                // already did do the auto-upddate, so its a bade exe in my extension
+                                throw new Error('BAD_EXE_WITHIN_EXT');
+                            }
+    						console.log('sending exeuint8str to exe');
+    						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exeuint8str, applyfailed=>applyfailed?reject(applyfailed):resolve(true) )  );
+                            gExeComm.unregister();
+                            didautoupdate = 1;
+                            console.error('WILL RETRY NATIVE CONNECT');
+                            break;
+                            // i dont really need to do this, it will all get overwritten
+                            // gExeComm = null;
+                            // callInNative = null;
+                            // callInExe = null;
+    					} catch(exe_apply_err) {
+    						console.error('exe_apply_err:', exe_apply_err);
+    						let howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
+    						throw { reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exe_apply_err, exeversion, extversion, howtofixstr]) }; // debug: commented out
+    					}
+
+    					return 'platinfo got, callInNative set, exe started, exe self applied';
+    				}
+                }
 			}
 		}()
 	);
