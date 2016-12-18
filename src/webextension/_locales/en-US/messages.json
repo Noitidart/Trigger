@@ -25,7 +25,7 @@
 
 	"browseraction_title": { "message": "Trigger Dashboard" },
     "initializing_step": { "message": "Initializing ($CURRENT_STEP$/$TOTAL_STEP_COUNT$)", "placeholders":{"CURRENT_STEP":{"content":"$1"}, "TOTAL_STEP_COUNT":{"content":"$2"}} },
-    "badge_error": { "message": "ERR" },
+    "badge_error": { "message": "Error" },
 
 	"install": { "message": "Install" },
 	"installed": { "message": "Installed" },

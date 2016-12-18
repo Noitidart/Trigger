@@ -78,7 +78,7 @@ let callIn = (...args) => new Promise(resolve => window['callIn' + args.shift()]
 // start - init
 let gStartupLoaderDots = 0;
 let gStartupLoaderDotsMax = 3;
-let gStartupLoaderInterval = 500;
+let gStartupLoaderInterval = 350;
 function startupLoaderAnimation() {
     if (nub.self.fatal === undefined) {
         if (gStartupLoaderDots++ === gStartupLoaderDotsMax) {
@@ -94,7 +94,7 @@ function startupLoaderAnimation() {
 }
 async function preinit() {
     startupLoaderAnimation();
-
+    
 	let basketmain = new PromiseBasket;
     let steps = {
         done: [],
