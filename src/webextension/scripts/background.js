@@ -206,7 +206,7 @@ async function preinit() {
             finishStep('platform_info');
 
             startStep('platform_setup');
-            throw { stepname, reason:'TESTING' };
+
 			// set callInNative
 			callInNative = nub.platform.os == 'android' ? callInMainworker : callInExe;
 
@@ -308,6 +308,7 @@ async function preinit() {
 		await basketmain.run();
 
         nub.self.fatal = null;
+        setBrowserAction({text:''}); // hide the loading dots
 		init();
 	} catch(err) {
 		console.error('onPreinitFailed, err:', err);
@@ -741,7 +742,7 @@ function browserActionSetTitle(title) {
 	}
 }
 function setBrowserAction({text, color, tabid=-1}) {
-    if (text) browser.browserAction.setBadgeText({  text, ...(tabid!==-1?{tabid}:{})  });
+    if (text !== undefined) browser.browserAction.setBadgeText({  text, ...(tabid!==-1?{tabid}:{})  }); // as text can be blank string to remove it
     if (color) browser.browserAction.setBadgeBackgroundColor({  color, ...(tabid!==-1?{tabid}:{})  });
 }
 async function closeTab(tabids) {
