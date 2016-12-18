@@ -457,21 +457,44 @@ var gTrans = [ // needs to be var, so its accessible to dom-react.js
 initTransTimingStylesheet(); // must go after setting up gTrans
 
 // REACT COMPONENTS - PRESENTATIONAL
-const Root = () => React.createElement(ReactRedux.Provider, { store },
-	React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
-		React.createElement(ReactRouter.Route, { path:'/', component:App },
-			React.createElement(ReactRouter.IndexRoute, { component:PageMyHotkeys }),
-			React.createElement(ReactRouter.Route, { path:'edit/(:filename)', component:PageCommandForm }),
-			React.createElement(ReactRouter.Route, { path:'versions/(:filename)', component:PageVersions }),
-			React.createElement(ReactRouter.Route, { path:'add', component:PageAddCommand }),
-			React.createElement(ReactRouter.Route, { path:'add/browse', component:PageCommunity }),
-			React.createElement(ReactRouter.Route, { path:'add/create', component:PageCommandForm }),
-			React.createElement(ReactRouter.Route, { path:'auth', component:PageAuth }),
-			React.createElement(ReactRouter.Route, { path:'purchase', component:PagePurchase }),
-			React.createElement(ReactRouter.Route, { path:'*', component:PageInvalid })
-		)
-	)
-);
+const Root = () => {
+    console.error('root nub.self.fatal:', nub.self.fatal);
+    if (nub.self.fatal) {
+        return React.createElement(ReactRedux.Provider, { store },
+            React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
+                React.createElement(ReactRouter.Route, { path:'/', component:App },
+                    React.createElement(ReactRouter.IndexRoute, { component:PageFatal }),
+                    React.createElement(ReactRouter.Route, { path:'*', component:PageFatal })
+                )
+            )
+        );
+    } else if (nub.self.fatal === undefined) {
+        return React.createElement(ReactRedux.Provider, { store },
+            React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
+                React.createElement(ReactRouter.Route, { path:'/', component:App },
+                    React.createElement(ReactRouter.IndexRoute, { component:PageStartingup }),
+                    React.createElement(ReactRouter.Route, { path:'*', component:PageStartingup })
+                )
+            )
+        );
+    } else {
+        return React.createElement(ReactRedux.Provider, { store },
+            React.createElement(ReactRouter.Router, { history:ReactRouter.browserHistory },
+                React.createElement(ReactRouter.Route, { path:'/', component:App },
+                    React.createElement(ReactRouter.IndexRoute, { component:PageMyHotkeys }),
+                    React.createElement(ReactRouter.Route, { path:'edit/(:filename)', component:PageCommandForm }),
+                    React.createElement(ReactRouter.Route, { path:'versions/(:filename)', component:PageVersions }),
+                    React.createElement(ReactRouter.Route, { path:'add', component:PageAddCommand }),
+                    React.createElement(ReactRouter.Route, { path:'add/browse', component:PageCommunity }),
+                    React.createElement(ReactRouter.Route, { path:'add/create', component:PageCommandForm }),
+                    React.createElement(ReactRouter.Route, { path:'auth', component:PageAuth }),
+                    React.createElement(ReactRouter.Route, { path:'purchase', component:PagePurchase }),
+                    React.createElement(ReactRouter.Route, { path:'*', component:PageInvalid })
+                )
+            )
+        );
+    }
+}
 
 const App = React.createClass({
 	displayName: 'App',
@@ -1006,32 +1029,40 @@ const Header = React.createClass({
 	render() {
 		let { pathname, params, query } = this.props;
 
-		let pathcrumbs = {
-			'/': ['myhotkeys'],
-			'/add': ['myhotkeys', 'addcommand'],
-			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
-			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
-            '/purchase': ['myhotkeys', 'purchase']
-			// '/auth': ['auth'], // special case
-			// '/edit': ['myhotkeys', 'editcommand'], // special case
-			// '/versions': ['myhotkeys', 'versionscommand'] // special case
-		};
-		// special cases - /edit, /versions
-		let special = /(edit|versions)\/(_?[a-z0-9]{8})/.exec(pathname)
-		if (special) {
-			let [, subcrumb, filename] = special;
-			let hotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
-			let { name } = hotkey.command.content.locales[gExtLocale]; // TODO: multilocale
-			pathcrumbs[pathname] = ['myhotkeys', browser.i18n.getMessage(`crumb_${subcrumb}command`, name)]
-		}
+        let crumbs;
+        if (nub.self.fatal) {
+            crumbs = ['Fatal Error'];
+        } else if (nub.self.fatal === undefined) {
+            crumbs = ['Starting Up'];
+        } else {
 
-        // special case - /auth
-        if (pathname == '/auth') {
-            let { serviceid } = query;
-            pathcrumbs[pathname] = [ browser.i18n.getMessage('crumb_auth', browser.i18n.getMessage('servicename_' + serviceid)) ];
+    		let pathcrumbs = {
+    			'/': ['myhotkeys'],
+    			'/add': ['myhotkeys', 'addcommand'],
+    			'/add/browse': ['myhotkeys', 'addcommand', 'community'],
+    			'/add/create': ['myhotkeys', 'addcommand', 'createcommand'],
+                '/purchase': ['myhotkeys', 'purchase']
+    			// '/auth': ['auth'], // special case
+    			// '/edit': ['myhotkeys', 'editcommand'], // special case
+    			// '/versions': ['myhotkeys', 'versionscommand'] // special case
+    		};
+    		// special cases - /edit, /versions
+    		let special = /(edit|versions)\/(_?[a-z0-9]{8})/.exec(pathname)
+    		if (special) {
+    			let [, subcrumb, filename] = special;
+    			let hotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+    			let { name } = hotkey.command.content.locales[gExtLocale]; // TODO: multilocale
+    			pathcrumbs[pathname] = ['myhotkeys', browser.i18n.getMessage(`crumb_${subcrumb}command`, name)]
+    		}
+
+            // special case - /auth
+            if (pathname == '/auth') {
+                let { serviceid } = query;
+                pathcrumbs[pathname] = [ browser.i18n.getMessage('crumb_auth', browser.i18n.getMessage('servicename_' + serviceid)) ];
+            }
+
+    		crumbs = pathcrumbs[pathname] || ['invalid'];
         }
-
-		let crumbs = pathcrumbs[pathname] || ['invalid'];
 
 		// localize it and wrap it <small>
 		crumbs.forEach( (crumb, i, arr) =>
@@ -2822,6 +2853,61 @@ const PageAuth = React.createClass({
 });
 // end - PageAuth
 
+// start - PageFatal
+const PageFatal = React.createClass({
+	displayName: 'PageFatal',
+	render() {
+        console.error('rendering page fatal');
+
+        // build body, based on err.reason, with localized template and with err.text and errex
+        let err = nub.self.fatal;
+        let body, bodyarr;
+        switch (err.reason) {
+            // case 'STG_CONNECT': // let default handler take care of this
+            // 		//
+            // 	break;
+            // case 'EXE_CONNECT':
+            //
+            // 		bodyarr = [chrome.i18n.getMessage('startupfailed_execonnect') + ' ' + (err.text || chrome.i18n.getMessage('startupfailed_unknown'))]
+            // 		if (errex) bodyarr[0] += ' ' + errex.toString();
+            //
+            // 	break;
+            default:
+                let txt = '';
+                if (err.text) txt += err.text;
+                // if (txt && errex) txt += '\n';
+                // if (errex) txt += errex;
+
+                bodyarr = [ txt || browser.i18n.getMessage('startupfailed_unknown') ];
+        }
+        body = browser.i18n.getMessage('startupfailed_body', bodyarr);
+
+		return React.createElement('div', undefined,
+			'Crticial error! Failed to startup! Please try to restart the extension. If this does not fix it, please contact Noitidart for help on the support page - https://www.github.com/Noitidart/Trigger/issues',
+            React.createElement('br'),
+            'Error details:',
+            React.createElement('br'),
+            'Step: ' + nub.self.fatal.stepname,
+            React.createElement('br'),
+            body
+		);
+	}
+});
+// end - PageFatal
+
+// start - PageStartingup
+const PageStartingup = React.createClass({
+	displayName: 'PageStartingup',
+	render() {
+        console.error('rendering page fatal');
+
+		return React.createElement('div', undefined,
+			'Trigger is currently in the startup process. This can take up to 5 minutes. Please try reloading the page later.'
+		);
+	}
+});
+// end - PageFatal
+
 // start - PageInvalid
 const PageInvalid = React.createClass({
 	displayName: 'PageInvalid',
@@ -2835,7 +2921,7 @@ const PageInvalid = React.createClass({
 
 		return React.createElement('div', undefined,
 			browser.i18n.getMessage('invalidpage_message'),
-      ' ', React.createElement('a', { href:'/', onClick:this.gotoMyhotkeys }, browser.i18n.getMessage('invalidpage_link'))
+            ' ' + React.createElement('a', { href:'/', onClick:this.gotoMyhotkeys }, browser.i18n.getMessage('invalidpage_link'))
 		);
 	}
 });

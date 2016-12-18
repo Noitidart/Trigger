@@ -2,9 +2,10 @@ var nub = {
 	self: {
 		id: chrome.runtime.id,
 		version: chrome.runtime.getManifest().version,
-		chromemanifestkey: 'trigger' // crossfile-link37388
+		chromemanifestkey: 'trigger', // crossfile-link37388
 		// startup_reason: string; enum[STARTUP, UPGRADE, DOWNGRADE, INSTALL]
 		// old_version: set only on UPGRADE/DOWNGRADE
+        fatal: undefined // set to error when fatal startup happens
 	},
 	browser: {
 		name: getBrowser().name.toLowerCase(),
@@ -75,8 +76,73 @@ var callInNative; // set in preinit, if its android, it is eqaul to callInMainwo
 let callIn = (...args) => new Promise(resolve => window['callIn' + args.shift()](...args, val=>resolve(val))); // must pass undefined for aArg if one not provided, due to my use of spread here. had to do this in case first arg is aMessageManagerOrTabId
 
 // start - init
+let gStartupLoaderDots = 0;
+let gStartupLoaderDotsMax = 3;
+let gStartupLoaderInterval = 500;
+function startupLoaderAnimation() {
+    if (nub.self.fatal === undefined) {
+        if (gStartupLoaderDots++ === gStartupLoaderDotsMax) {
+            gStartupLoaderDots = 1;
+        }
+
+        setBrowserAction({
+            text: '.'.repeat(gStartupLoaderDots) + ' '.repeat(gStartupLoaderDotsMax - gStartupLoaderDots),
+            color:'#7DCE8D'
+        });
+        setTimeout(startupLoaderAnimation, gStartupLoaderInterval);
+    }
+}
 async function preinit() {
+    startupLoaderAnimation();
+
 	let basketmain = new PromiseBasket;
+    let steps = {
+        done: [],
+        failed: [],
+        inprog: [],
+        pending: [
+            'storage',
+            'platform_info',
+            'platform_setup',
+        ],
+    };
+    steps.total_cnt = steps.pending.length;
+
+    browser.browserAction.onClicked.addListener(onBrowserActionClicked);
+
+    let startStep = stepname => {
+        let ixpend = steps.pending.indexOf(stepname);
+        if (ixpend === -1) console.error('DEV ERROR: no such pending stepname:', stepname);
+        steps.pending.splice(ixpend, 1);
+        steps.inprog.push(stepname);
+        // if (!nub.self.fatal) setBrowserAction({ text:browser.i18n.getMessage('initializing_step', [steps.done.length, steps.total_cnt]), color:'#F57C00' });
+    };
+    let errorStep = stepname => {
+        if (stepname) {
+            let ixprog = steps.inprog.indexOf(stepname);
+            if (ixprog > -1) steps.inprog.splice(ixprog, 1);
+            steps.failed.push(stepname);
+        }
+        setBrowserAction({ text:browser.i18n.getMessage('badge_error'), color:'#E51C23' });
+    };
+    let finishStep = stepname => {
+        let ixprog = steps.inprog.indexOf(stepname);
+        if (ixprog === -1) console.error('DEV ERROR: no such inprog stepname:', stepname);
+        steps.inprog.splice(ixprog, 1);
+        steps.done.push(stepname);
+
+        steps.done.push(stepname);
+
+        if (!nub.self.fatal) {
+            // is either undefined for steps in progress, or null for complete link847473
+            if (steps.done.length === steps.total_cnt) {
+                setBrowserAction({ text:'' });
+            } else {
+                // setBrowserAction({ text:browser.i18n.getMessage('initializing_step', [steps.done.length, steps.total_cnt]), color:'#F57C00' });
+                // setBrowserAction({ text:browser.i18n.getMessage('badge_startingup'), color:'#F57C00' });
+            }
+        }
+    };
 
 	/*
 	 promises in promiseallarr when get rejected, reject with:
@@ -90,13 +156,15 @@ async function preinit() {
 	basketmain.add(
 		async function() {
 			// fetch storage and set always update values (keys in nub.stg)
+            const stepname = 'storage';
+            startStep(stepname);
 			try {
 				let stgeds = await storageCall('local', 'get', Object.keys(nub.stg));
 				for (let key in stgeds) {
 					nub.stg[key] = stgeds[key];
 				}
 			} catch(err) {
-				throw { reason:'STG_CONNECT', text:err.toString() };
+				throw { stepname, reason:'STG_CONNECT', text:err.toString() };
 			}
 
 			// set nub.self.startup_reason and old_version
@@ -123,8 +191,8 @@ async function preinit() {
 				// browser startup OR enabled after having disabled
 				nub.self.startup_reason = 'STARTUP';
 			}
-
-		}()
+		}(),
+        () => finishStep('storage')
 	);
 
 	// get platform info - and startup exe (desktop) or mainworker (android)
@@ -132,8 +200,13 @@ async function preinit() {
 	basketmain.add(
 		async function() {
 			// get platform info
+            const stepname = 'platform_setup'; // for throw
+            startStep('platform_info');
 			nub.platform = await browser.runtime.getPlatformInfo();
+            finishStep('platform_info');
 
+            startStep('platform_setup');
+            throw { stepname, reason:'TESTING' };
 			// set callInNative
 			callInNative = nub.platform.os == 'android' ? callInMainworker : callInExe;
 
@@ -166,7 +239,7 @@ async function preinit() {
     							})
     						} catch(install_err) {
     							console.error('install_err:', install_err);
-    							throw { reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
+    							throw { stepname, reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
     						}
 
     						// ok installed, try re-connecting
@@ -175,10 +248,10 @@ async function preinit() {
     								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
     							});
     						} catch(re_conn_err) {
-    							throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
+    							throw { stepname, reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', re_conn_err) };
     						}
     					} else {
-    						throw { reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', first_conn_err) };
+    						throw { stepname, reason:'EXE_CONNECT', text:chrome.i18n.getMessage('startupfailed_execonnect', first_conn_err) };
     					}
 
     				}
@@ -205,7 +278,7 @@ async function preinit() {
     					try {
                             if (didautoupdate === 1) {
                                 // already did do the auto-upddate, so its a bade exe in my extension
-                                throw new Error('BAD_EXE_WITHIN_EXT');
+                                throw { stepname, reason:'BAD_EXE_WITHIN_EXT', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exe_apply_err, exeversion, extversion, howtofixstr]) }; // debug: commented out
                             }
     						console.log('sending exeuint8str to exe');
     						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exeuint8str, applyfailed=>applyfailed?reject(applyfailed):resolve(true) )  );
@@ -220,22 +293,30 @@ async function preinit() {
     					} catch(exe_apply_err) {
     						console.error('exe_apply_err:', exe_apply_err);
     						let howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
-    						throw { reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exe_apply_err, exeversion, extversion, howtofixstr]) }; // debug: commented out
+    						throw { stepname, reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exe_apply_err, exeversion, extversion, howtofixstr]) }; // debug: commented out
     					}
 
     					return 'platinfo got, callInNative set, exe started, exe self applied';
     				}
                 }
 			}
-		}()
+		}(),
+        () => finishStep('platform_setup')
 	);
 
 	try {
 		await basketmain.run();
 
+        nub.self.fatal = null;
 		init();
 	} catch(err) {
 		console.error('onPreinitFailed, err:', err);
+
+        nub.self.fatal = err;
+
+        let stepname;
+        if (err && typeof(err) == 'object' && err.stepname) stepname = err.stepname;
+        errorStep(stepname);
 
 		// build body, based on err.reason, with localized template and with err.text and errex
 		var body, bodyarr;
@@ -344,14 +425,20 @@ function startupBrowserAction() {
 			}
 		});
 	} else {
-		chrome.browserAction.setBadgeBackgroundColor({color:'#7DCE8D'});
-		chrome.browserAction.onClicked.addListener(onBrowserActionClicked);
+		setBrowserAction({ color:'#7DCE8D' });
 	}
 }
 function onBrowserActionClicked() {
-	console.log('opening menu.html now', nub.path.webext);
-	// addTab(nub.path.webext);
-	addTab(nub.path.pages + 'app.html');
+    if (nub.self.fatal === undefined) { // link847473
+        // show in process of starting up page
+        addTab(nub.path.pages + 'app.html');
+    } else if (nub.self.fatal === null) { // link847473
+        // ok addon is running smoothly, it started up
+        addTab(nub.path.pages + 'app.html');
+    } else {
+        // show critical startup error
+        addTab(nub.path.pages + 'app.html');
+    }
 }
 // end - browseraction
 async function addSerial({serial,buyqty}) {
@@ -653,8 +740,9 @@ function browserActionSetTitle(title) {
 		callInBootstrap('update');
 	}
 }
-function browserActionSetBadgeText(text) {
-
+function setBrowserAction({text, color, tabid=-1}) {
+    if (text) browser.browserAction.setBadgeText({  text, ...(tabid!==-1?{tabid}:{})  });
+    if (color) browser.browserAction.setBadgeBackgroundColor({  color, ...(tabid!==-1?{tabid}:{})  });
 }
 async function closeTab(tabids) {
   // if tabids is undefined, then it removes the current active tab
