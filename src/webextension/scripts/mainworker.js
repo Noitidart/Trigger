@@ -9,6 +9,10 @@ var callInBackground = Comm.callInX2.bind(null, gBsComm, 'callInBackground', nul
 var callInExe = Comm.callInX2.bind(null, gBsComm, 'callInExe', null);
 
 var jenv; // android
+let nub = { // link39181
+    nativetype: 'worker',
+    worker: {}
+};
 
 switch (OS.Constants.Sys.Name) {
 	case 'Android':
@@ -26,6 +30,14 @@ function onBeforeTerminate() {
 }
 
 // start - addon functions
+function init(aNub) {
+    // on successful init, return objct with nativetype (string;enum[worker,exe]) and the object entry // link39181
+
+    // Object.assign(nub, aNub); // i dont really need to do this, as functions in here are just called by background, thats the main guy
+
+    // return { nativetype, aNub[nativetype] };
+    return 'PLATFORM_NOT_YET_SUPPORTED';
+}
 function getSystemDirectory_android(type) {
 	// progrmatic helper for getSystemDirectory in MainWorker - devuser should NEVER call this himself
 	// type - string - currently accepted values

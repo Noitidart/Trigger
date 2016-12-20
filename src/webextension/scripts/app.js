@@ -1031,9 +1031,9 @@ const Header = React.createClass({
 
         let crumbs;
         if (nub.self.fatal) {
-            crumbs = ['Fatal Error'];
+            crumbs = ['fatal'];
         } else if (nub.self.fatal === undefined) {
-            crumbs = ['Starting Up'];
+            crumbs = ['startingup'];
         } else {
 
     		let pathcrumbs = {
@@ -2732,7 +2732,7 @@ const PagePurchase = ReactRedux.connect(
           React.createElement('hr'),
           // content
           error && React.createElement('div', { className:'jumbotron', style:{background:'none'} },
-            React.createElement('h1', { className:'lead' }, 'You cancelled the purchase. Error returned: ' + error)
+            React.createElement('h1', { className:'lead' }, 'Something went wrong, purhcase failed. Error returned: ' + error)
           ),
           !error && React.createElement('div', { className:'jumbotron', style:{paddingTop:'0',background:'none'} },
             React.createElement('p', { className:'lead' }, 'Thank you for your purchase! Your purchase code is:'),

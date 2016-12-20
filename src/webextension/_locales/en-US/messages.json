@@ -15,10 +15,10 @@
 	"startupfailed_body": { "message": "Trigger cannot be used because it failed to startup.\n\n$REASON$", "placeholders": { "REASON":{"content":"$1","example":"one of the entries from the startupfailed_ stuff below"}} },
 	"startupfailed_unknown": { "message": "The error is unknown. Please see \"Browser Console\" for more details. Try restarting the extension to fix this problem." },
 	"startupfailed_execonnect": { "message": "Failed to connect to executable: $REASON$", "placeholders": { "REASON": { "content": "$1", "example": "error returned by browser/firefox" } } },
-	"startupfailed_execonnectinstall": { "message": "Failed to connect to executable: $CONNTECT_REASON$\n\nTried to copy executable files but this also failed: $INSTALL_REASON$", "placeholders": { "CONNTECT_REASON":{"content":"$1"}, "INSTALL_REASON":{"content":"$2"} } },
+	"startupfailed_execonnectinstall": { "message": "Failed to connect to executable: $CONNTECT_REASON$\n\nTried to copy executable files but this also failed ($INSTALL_REASON$).", "placeholders": { "CONNTECT_REASON":{"content":"$1"}, "INSTALL_REASON":{"content":"$2"} } },
 	"startupfailed_exemismatch": {
-		"message": "Version of installed executable ($EXEVER$) does not match extension ($EXTVER$). Automatic executable update failed ($REASON$). $HOWTOFIX$",
-		"placeholders": {"REASON":{"content": "$1"}, "EXEVER":{"content": "$2"},"EXTVER":{"content": "$3"},"HOWTOFIX": {"content": "$4", "description": "either `startupfailed_exemismatch_howtofix1` or `startupfailed_exemismatch_howtofix2`" }}
+		"message": "Version of installed executable ($EXEVER$) does not match extension ($EXTVER$). Automatic executable update failed. $HOWTOFIX$",
+		"placeholders": {"EXEVER":{"content": "$1"},"EXTVER":{"content": "$2"},"HOWTOFIX": {"content": "$3", "description": "either `startupfailed_exemismatch_howtofix1` or `startupfailed_exemismatch_howtofix2`" }}
 	},
 	"startupfailed_exemismatch_howtofix1": { "message": "Please manually upgrade the executable *OR* downgrade the extension." },
 	"startupfailed_exemismatch_howtofix2": { "message": "Please manually downgrade the executable *OR* upgrade the extension." },
@@ -70,6 +70,8 @@
 	"group_keys": { "message": "Send Keys" },
 
 	"crumb_invalid": { "message": "Invalid Page" },
+	"crumb_fatal": { "message": "Fatal Startup Error" },
+	"crumb_startingup": { "message": "Still Starting Up..." },
 	"crumb_myhotkeys": { "message": "My Hotkeys" },
 	"crumb_addcommand": { "message": "Add Command" },
 	"crumb_editcommand": { "message": "Editing Command: $COMMAND_NAME$", "placeholders": {"COMMAND_NAME":{"content":"$1"}} },

@@ -94,7 +94,7 @@ function startupLoaderAnimation() {
 }
 async function preinit() {
     startupLoaderAnimation();
-    
+
 	let basketmain = new PromiseBasket;
     let steps = {
         done: [],
@@ -104,6 +104,7 @@ async function preinit() {
             'storage',
             'platform_info',
             'platform_setup',
+            'platform_init'
         ],
     };
     steps.total_cnt = steps.pending.length;
@@ -199,7 +200,7 @@ async function preinit() {
 	// set callInNative
 	basketmain.add(
 		async function() {
-			// get platform info
+			// GET PLATFORM INFO
             const stepname = 'platform_setup'; // for throw
             startStep('platform_info');
 			nub.platform = await browser.runtime.getPlatformInfo();
@@ -207,21 +208,22 @@ async function preinit() {
 
             startStep('platform_setup');
 
-			// set callInNative
-			callInNative = nub.platform.os == 'android' ? callInMainworker : callInExe;
+            // SET CALLINNATIVE
+            callInNative = nub.platform.os == 'android' ? callInMainworker : callInExe;
 
-			// connect to native
+			// CONNECT TO NATIVE
 			if (nub.platform.os == 'android') {
 				callInBootstrap('startupMainworker', { path:nub.path.chrome.scripts + 'mainworker.js' });
 				// worker doesnt start till first call, so just assume it connected
 
 				// no need to verify host version, as its the one from the chromeworker
-				return 'platinfo got, callInNative set, worker started';
 			} else {
                 let didautoupdate = 0;
                 let is_nativeconnect_init = true;
                 while (is_nativeconnect_init || didautoupdate === 1) {
                     is_nativeconnect_init = false;
+                    didautoupdate = didautoupdate === 1 ? -1 : 0; // meaning this is the first loop after doing auto-upddate so lets set to -1 so it doesnt keep doing it
+                    console.log('trying new Comm.server.webextexe');
     				try {
     					await new Promise((resolve, reject) => {
     						gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
@@ -236,13 +238,14 @@ async function preinit() {
     						try {
     							await new Promise((resolve, reject) => {
     								callInBootstrap('installNativeMessaging', { manifest:nub.namsg.manifest, exe_pkgpath:getNamsgExepkgPath(), os:nub.platform.os }, err => err ? reject(err) : resolve() );
-    							})
+    							});
     						} catch(install_err) {
     							console.error('install_err:', install_err);
     							throw { stepname, reason:'EXE_INSTALL', text:chrome.i18n.getMessage('startupfailed_execonnectinstall', [first_conn_err, install_err.toString()]) };
     						}
 
     						// ok installed, try re-connecting
+                            console.log('ok trying to reconnect as did fx_install');
     						try {
     							await new Promise((resolve, reject) => {
     								gExeComm = new Comm.server.webextexe('trigger', ()=>resolve(), err=>reject(err))
@@ -257,6 +260,7 @@ async function preinit() {
     				}
 
     				// ok connected
+
     				// lets verify the exe is for this version of extension, else send it exe from within for self update/downgrade
     				// btw if it gets here, its not android, as if it was android it `return`ed earlier after starting worker
 
@@ -267,36 +271,32 @@ async function preinit() {
     				console.log('extversion:', extversion);
     				console.log('equal?');
 
-    				if (exeversion === extversion) {
-    					return 'platinfo got, callInNative set, exe started, exe version is correct';
-    				} else {
+    				if (exeversion !== extversion) {
     					// version mismatch, lets fetch the exe and send it to the current exe so it can self-apply
-    					console.log('as not equal, am fetching exearrbuf');
-    					let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { restype:'arraybuffer' })).xhr.response;
-    					// let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { restype:'arraybuffer' })).xhr.response;
-                        let exeuint8str = new Uint8Array(exearrbuf).toString();
     					try {
-                            if (didautoupdate === 1) {
-                                // already did do the auto-upddate, so its a bade exe in my extension
-                                throw { stepname, reason:'BAD_EXE_WITHIN_EXT', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exe_apply_err, exeversion, extversion, howtofixstr]) }; // debug: commented out
-                            }
+                            if (didautoupdate === -1) throw 'BAD_EXE_WITHIN_EXT'; // this will trigger block link77577 // already did do the auto-upddate, so its a bade exe in my extension
+
+                            console.log('as not equal, am fetching exearrbuf');
+        					let exearrbuf = (await xhrPromise(getNamsgExepkgPath(), { restype:'arraybuffer' })).xhr.response;
+        					// let exearrbuf = (await xhrPromise('https://cdn2.iconfinder.com/data/icons/oxygen/48x48/actions/media-record.png', { restype:'arraybuffer' })).xhr.response;
+                            let exeuint8str = new Uint8Array(exearrbuf).toString();
+
     						console.log('sending exeuint8str to exe');
     						await new Promise(  (resolve, reject)=>callInExe( 'applyExe', exeuint8str, applyfailed=>applyfailed?reject(applyfailed):resolve(true) )  );
                             gExeComm.unregister();
                             didautoupdate = 1;
                             console.error('WILL RETRY NATIVE CONNECT');
-                            break;
+                            continue;
                             // i dont really need to do this, it will all get overwritten
                             // gExeComm = null;
                             // callInNative = null;
                             // callInExe = null;
     					} catch(exe_apply_err) {
+                            // link77577
     						console.error('exe_apply_err:', exe_apply_err);
     						let howtofixstr = isSemVer(extversion, '>' + exeversion) ? chrome.i18n.getMessage('startupfailed_exemismatch_howtofix1') : chrome.i18n.getMessage('startupfailed_exemismatch_howtofix2');
-    						throw { stepname, reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exe_apply_err, exeversion, extversion, howtofixstr]) }; // debug: commented out
+    						throw { stepname, reason:'EXE_MISMATCH', text:chrome.i18n.getMessage('startupfailed_exemismatch', [exeversion, extversion, howtofixstr]) }; // debug: commented out
     					}
-
-    					return 'platinfo got, callInNative set, exe started, exe self applied';
     				}
                 }
 			}
@@ -307,10 +307,24 @@ async function preinit() {
 	try {
 		await basketmain.run();
 
+        console.log('ok basketmain done');
+
+        // CALL NATIVE INIT
+        startStep('platform_init');
+        let reason_or_nativenub = await callIn('Native', 'init', nub);
+        if (typeof(reason_or_nativenub) == 'string') {
+            // it is error reason
+            throw { stepname:'platform_init', reason:reason_or_nativenub };
+        } else {
+            // Object.assign(nub, reason_or_nativenub); // not required
+        }
+        finishStep('platform_init');
+
         nub.self.fatal = null;
         setBrowserAction({text:''}); // hide the loading dots
-		init();
+        init();
 	} catch(err) {
+        // err - if its mine it should be object with stepname, reason, subreason
 		console.error('onPreinitFailed, err:', err);
 
         nub.self.fatal = err;
@@ -320,7 +334,7 @@ async function preinit() {
         errorStep(stepname);
 
 		// build body, based on err.reason, with localized template and with err.text and errex
-		var body, bodyarr;
+		let bodyarr;
 		switch (err.reason) {
 			// case 'STG_CONNECT': // let default handler take care of this
 			// 		//
@@ -339,7 +353,7 @@ async function preinit() {
 
 				bodyarr = [ txt || chrome.i18n.getMessage('startupfailed_unknown') ];
 		}
-		var body = chrome.i18n.getMessage('startupfailed_body', bodyarr);
+		let body = chrome.i18n.getMessage('startupfailed_body', bodyarr);
 
 		// show error to user
 		callInBootstrap('showSystemAlert', { title:chrome.i18n.getMessage('startupfailed_title'), body:body });
