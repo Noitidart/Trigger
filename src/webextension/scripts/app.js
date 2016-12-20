@@ -18,7 +18,7 @@ async function init() {
 	gExtLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val)));
 	gUserLocales = (await new Promise(resolve => callInBackground('getUserPreferredLocales', undefined, val=>resolve(val)))).map(el => el.replace(/_/g, '-'));
 
-	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant, nub:1 }, val => resolve(val)) );
+	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant_instructions, nub:1 }, val => resolve(val)) );
 
 	nub = data.nub;
 
@@ -62,6 +62,7 @@ function focusAppPage() {
 }
 
 // GLOBALS
+let hydrant_instructions = {stg:{pref_hotkeys:1,pref_serials:1,mem_oauth:1}};
 let hydrant = {
 	stg: {
 		// set defaults here, as if it never has been set with `storageCall('storaget', 'set')` then `fetchData` will get back an empty object

@@ -90,6 +90,8 @@ function startupLoaderAnimation() {
             color:'#7DCE8D'
         });
         setTimeout(startupLoaderAnimation, gStartupLoaderInterval);
+    } else if (nub.self.fatal === null) {
+        setBrowserAction({ text:'' });
     }
 }
 async function preinit() {
@@ -134,15 +136,16 @@ async function preinit() {
 
         steps.done.push(stepname);
 
-        if (!nub.self.fatal) {
-            // is either undefined for steps in progress, or null for complete link847473
-            if (steps.done.length === steps.total_cnt) {
-                setBrowserAction({ text:'' });
-            } else {
-                // setBrowserAction({ text:browser.i18n.getMessage('initializing_step', [steps.done.length, steps.total_cnt]), color:'#F57C00' });
-                // setBrowserAction({ text:browser.i18n.getMessage('badge_startingup'), color:'#F57C00' });
-            }
-        }
+        // not making these seteps responsible for browser action as it is now just dots
+        // if (!nub.self.fatal) {
+        //     // is either undefined for steps in progress, or null for complete link847473
+        //     if (steps.done.length === steps.total_cnt) {
+        //         setBrowserAction({ text:'' });
+        //     } else {
+        //         // setBrowserAction({ text:browser.i18n.getMessage('initializing_step', [steps.done.length, steps.total_cnt]), color:'#F57C00' });
+        //         // setBrowserAction({ text:browser.i18n.getMessage('badge_startingup'), color:'#F57C00' });
+        //     }
+        // }
     };
 
 	/*
@@ -316,12 +319,11 @@ async function preinit() {
             // it is error reason
             throw { stepname:'platform_init', reason:reason_or_nativenub };
         } else {
-            // Object.assign(nub, reason_or_nativenub); // not required
+            Object.assign(nub, reason_or_nativenub); // not required
         }
         finishStep('platform_init');
 
         nub.self.fatal = null;
-        setBrowserAction({text:''}); // hide the loading dots
         init();
 	} catch(err) {
         // err - if its mine it should be object with stepname, reason, subreason
@@ -491,7 +493,7 @@ function resetLabel(label) {
 };
 
 async function fetchData(aArg={}) {
-	let { hydrant, nub:wantsnub } = aArg;
+	let { hydrant_instructions, nub:wantsnub } = aArg;
 	// xprefs means xpcom prefs
 
 	let data = {};
@@ -500,16 +502,16 @@ async function fetchData(aArg={}) {
 
 	if (wantsnub) data.nub = nub;
 
-	if (hydrant) {
+	if (hydrant_instructions) {
 		data.hydrant = {};
-		if ('stg' in hydrant) {
+		if ('stg' in hydrant_instructions) {
 			basketmain.add(
-				storageCall('local', 'get', Object.keys(hydrant.stg)),
+				storageCall('local', 'get', Object.keys(hydrant_instructions.stg)),
 				stgeds => data.hydrant.stg = stgeds
 				// stgeds => { console.log('got stgeds:', stgeds); data.stg = stgeds; }
 			);
 		}
-		// if ('xprefs' in hydrant) { // xpcom_prefs
+		// if ('xprefs' in hydrant_instructions) { // xpcom_prefs
 		// 	basketmain.add(
 		// 		new Promise( resolve=>callInBootstrap('getXPrefs', { nametypes:{  'geo.provider.testing':'boolean', 'geo.wifi.uri':'string'  } }, xprefs => resolve(xprefs)) ),
 		// 		xprefvals => data.hydrant.xprefs=xprefvals
