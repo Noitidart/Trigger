@@ -2036,6 +2036,7 @@ const PageCommunity = ReactRedux.connect(
 
 		return {
 			remotecommands: pagestate.remotecommands,
+			remotecommands_error: pagestate.remotecommands_error,
 			filterterm: pagestate.filterterm,
 			filtercat: pagestate.filtercat,
 			sort: pagestate.sort
@@ -2045,12 +2046,13 @@ const PageCommunity = ReactRedux.connect(
 	displayName: 'PageCommunity',
 	goBack: e => stopClickAndCheck0(e) ? loadOldPage('/add') : null,
 	loadRemoteCommands: async function() {
+        console.log('in loadRemoteCommands');
 		let { location:{pathname} } = this.props; // router
 		let { sort } = this.props; // mapped state
 
 		// start spinner if it hasnt already
 		store.dispatch(modPageState(pathname, { remotecommands:undefined, remotecommands_error:undefined })); // when clicking "Try Again" this will cause spinner to show, and error to hide // if this is first run, on first render, then it `modPageState` will see that there is no change as `remotecommands_error` is not there it is already `undefined`
-
+        console.log('dispatched spinner');
 		let remotecommands = [];
 		try {
 			// get install counts
@@ -2061,8 +2063,8 @@ const PageCommunity = ReactRedux.connect(
 				if (status !== 200) throw xp;
 				installs = response;
 			} catch(xperr) {
-				let { errtext='Unhandled server response when fetching install counts.', reason:xhrreason, xhr:{response, status}} = xperr;
-				throw {	errtext, xhrreason, response, status };
+				let { errtext='Unhandled server response when fetching install counts.', reason:xhrreason, xhr:{response, status, responseURL:url}} = xperr;
+				throw {	errtext, xhrreason, response, status, url };
 			}
 
 			// get commits - used for history and statistics
@@ -2073,8 +2075,8 @@ const PageCommunity = ReactRedux.connect(
 				if (status !== 200) throw xp;
 				commits = response;
 			} catch(xperr) {
-				let { errtext='Unhandled server response when fetching command details.', reason:xhrreason, xhr:{response, status}} = xperr;
-				throw {	errtext, xhrreason, response, status };
+				let { errtext='Unhandled server response when fetching command details.', reason:xhrreason, xhr:{response, status, responseURL:url}} = xperr;
+				throw {	errtext, xhrreason, response, status, url };
 			}
 			// clean out commits
 			let prnum;
@@ -2141,8 +2143,8 @@ const PageCommunity = ReactRedux.connect(
 							({ sha:file_sha, content} = xp.xhr.response);
 							content = JSON.parse(atob(content));
 						} catch(xperr) {
-							let { errtext='Unhandled server response when fetching command content for file:' + filename, reason:xhrreason, xhr:{response, status}} = xperr;
-							throw {	errtext, xhrreason, response, status };
+							let { errtext='Unhandled server response when fetching command content for file:' + filename, reason:xhrreason, xhr:{response, status, responseURL:url}} = xperr;
+							throw {	errtext, xhrreason, response, status, url };
 						}
 
 						let remotecommand = {
@@ -2251,6 +2253,7 @@ const PageCommunity = ReactRedux.connect(
 	render() {
 		let { remotecommands_error, remotecommands, filterterm, filtercat, sort='alpha' } = this.props; // mapped state
 
+        console.error('remotecommands_error:', remotecommands_error)
 		if (!remotecommands && !remotecommands_error) // first render i think - i hope
 			setTimeout(this.loadRemoteCommands)
 
@@ -2291,12 +2294,12 @@ const PageCommunity = ReactRedux.connect(
 			React.createElement('hr'),
 			// content
 			React.createElement('div', { className:'row' + (!remotecommands ? ' text-center' : '') },
-				remotecommands_error && React.createElement('button', { className:'btn btn-lg btn-default no-btn', style:{marginLeft:'-80px'} },
-					React.createElement('span', { className:'glyphicon glyphicon-refresh', onClick:this.loadRemoteCommands }),
+				remotecommands_error && React.createElement('button', { className:'btn btn-lg btn-default', onClick:this.loadRemoteCommands },
+					React.createElement('span', { className:'glyphicon glyphicon-refresh' }),
 					' ' + browser.i18n.getMessage('try_again')
 				),
-				remotecommands_error && React.createElement(RemoteCommandsLoadError, { remotecommands_error }),
-				!remotecommands && React.createElement('button', { className:'btn btn-lg btn-default no-btn', style:{marginLeft:'-80px'} },
+				remotecommands_error && React.createElement(RemoteCommandsLoadError, remotecommands_error),
+				!remotecommands_error && !remotecommands && React.createElement('button', { className:'btn btn-lg btn-default no-btn', style:{marginLeft:'-80px'} },
 					React.createElement('span', { className:'glyphicon glyphicon-globe spinning' }),
 					' ' + browser.i18n.getMessage('loading_community')
 				),
@@ -2326,13 +2329,17 @@ const PageCommunity = ReactRedux.connect(
 	}
 }));
 
-const RemoteCommandsLoadError = ({errtext, xhrreason, status, beautified_response}) =>
-React.createElement('span', undefined,
+const RemoteCommandsLoadError = ({url, errtext, xhrreason, status, beautified_response}) =>
+React.createElement('div', undefined,
+    React.createElement('br'),
 	'Failed to load community from Github. ' + errtext,
 	React.createElement('br'),
 	React.createElement('br'),
 	status && React.createElement('dl', undefined,
 		React.createElement('dt', undefined,
+			React.createElement('dd', undefined,
+				'URL: ' + url
+			),
 			React.createElement('dd', undefined,
 				'Status Code: ' + status
 			),
@@ -2903,7 +2910,9 @@ const PageStartingup = React.createClass({
         console.error('rendering page fatal');
 
 		return React.createElement('div', undefined,
-			'Trigger is currently in the startup process. This can take up to 5 minutes. Please try reloading the page later.'
+			'Trigger is currently in the startup process. This can take up to a minute. Trigger is not usable until startup completes. Please try reloading the page later. The green loading badge will disappear from the toolbar button when ready: ',
+            React.createElement('br'),
+            React.createElement('img', { src:'/images/startupanim.png' }),
 		);
 	}
 });

@@ -95,7 +95,9 @@ function startupLoaderAnimation() {
     }
 }
 async function preinit() {
+
     startupLoaderAnimation();
+    browser.browserAction.onClicked.addListener(onBrowserActionClicked);
 
 	let basketmain = new PromiseBasket;
     let steps = {
@@ -111,7 +113,6 @@ async function preinit() {
     };
     steps.total_cnt = steps.pending.length;
 
-    browser.browserAction.onClicked.addListener(onBrowserActionClicked);
 
     let startStep = stepname => {
         let ixpend = steps.pending.indexOf(stepname);
