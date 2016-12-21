@@ -1711,6 +1711,7 @@ const PageCommandForm = ReactRedux.connect(
 
 			// if edit, make sure at least one value is changed
 			Object.assign(domvalues, getFormValues(['group']));
+            domvalues.code = await new Promise(resolve => callInBootstrap('beautifyText', { js:domvalues.code }, val=>resolve(val)));
 
 			let { group, locales:{[gExtLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content; // TODO: multilocale point
 			let hotkeyvalues = { group, name, description, code };
@@ -1862,7 +1863,8 @@ const SaveCommandBtn = ReactRedux.connect(
 					}
 				},
 				code: {
-					exec: await new Promise(resolve => callInBootstrap('beautifyText', { js:domvalues.code }, val=>resolve(val)))
+					// exec: await new Promise(resolve => callInBootstrap('beautifyText', { js:domvalues.code }, val=>resolve(val)))
+					exec: domvalues.code
 				}
 			}
 		};
@@ -1871,7 +1873,10 @@ const SaveCommandBtn = ReactRedux.connect(
 		if (iseditpage) {
 			// lets make sure something really changed
 			// and collect that into changes_since_base if necessary
-			if (JSON.stringify(newcommand.content) != JSON.stringify(command.content)) {
+            let beautified_newcode = await callIn('Bootstrap', 'beautifyText', { js:newcommand.content.code.exec });
+            let beautified_oldcode = await callIn('Bootstrap', 'beautifyText', { js:command.content.code.exec });
+
+			if (beautified_newcode != beautified_oldcode && JSON.stringify(newcommand.content) != JSON.stringify(command.content)) {
 				isreallyedited = true;
 
 				// is there a gitfile? if so then set the git properies of `base_file_sha` and `changes_since_base`
@@ -2375,7 +2380,7 @@ const RemoteCommand = ReactRedux.connect(
 
 		return React.createElement('div', { className:'row' },
 			React.createElement('div', { className:'col-sm-4' },
-				React.createElement('img', { className:'img-responsive', src:'http://placehold.it/1280X720' }),
+				React.createElement('img', { className:'img-responsive', src:'http://placehold.it/1280X720?text=Contributor+Stats' }),
 			),
 			React.createElement('div', { className:'col-sm-8' },
 				React.createElement('h3', undefined,
