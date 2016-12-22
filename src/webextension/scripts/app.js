@@ -1148,17 +1148,245 @@ const Hotkey = ReactRedux.connect(
 		// loadPage('/edit/' + filename, { testing:genFilename() }); // sets pagestate shows how i can do this in a redux way rather then a router way (relying on props.params)
 		loadPage('/edit/' + filename);
 	},
-	share: async function(e) {
-		// share command
+    shareModal(e) {
+        if (!stopClickAndCheck0(e)) return;
+
+        let { hotkey } = this.props;
+
+        createModal(
+            ReactRouter.browserHistory.getCurrentLocation().pathname,
+            {
+                content_component: 'ModalContentShareCommand',
+                data: {
+                    progress: undefined,
+                    hotkey
+                }
+                // title: 'Share Command?',
+                // ok: {
+                // 	label: 'Yes, Share Now',
+                // 	onClick: this.share
+                // },
+                // cancel: { label: 'No, Don\'t Share' },
+                // message:
+            }
+        );
+
+    },
+	cancelRecordingIfSelf() {
+		// returns 1 if stopped, returns 0 if nothing recording, returns -1 if something else is recording
+		let { dispatch } = this.props; // redux
+		let { recording } = this.props; // mapped state
+		let { hotkey } = this.props;
+
+		let { filename } = hotkey.command;
+
+		if (recording) {
+			if (recording.filename == filename) {
+				dispatch(modPageState('/', 'recording', undefined));
+				callInExe('stopRecordingKeys');
+				return 1;
+			} else {
+				return -1;
+			}
+		} else {
+			return 0;
+		}
+	},
+	setHotkey(e) {
 		if (!stopClickAndCheck0(e)) return;
 
 		let { dispatch } = this.props; // redux
 		let { hotkey } = this.props;
+		let { filename } = hotkey.command;
+
+		if (this.cancelRecordingIfSelf() !== 0)  throw 'either just canceled recording, OR something else is recording';
+
+		dispatch(modPageState('/', 'recording', {filename, current:{mods:[]} }));
+
+		callInExe('startRecordingKeys', undefined, ({__PROGRESS, recording:current, cancel}) => {
+			if (__PROGRESS) {
+				console.log('current:', current);
+				// replace current thats all
+				dispatch(modPageState('/', 'recording', {filename, current }));
+			} else {
+				console.log('ok done, cancel:', cancel, 'current:', current);
+				if (!cancel) {
+					console.log('no cancel, set it');
+					// in case user made changes while recording was going on
+					let updatedhotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
+					let newhotkey = { ...updatedhotkey, combo:current };
+					dispatch(editHotkey(newhotkey));
+					// check if hotkey is enabled, if it is, then callInExe('addHotkey'), it will overwrite
+					if (updatedhotkey.enabled) {
+						callInExe('addHotkey', { // will overwrite the old one
+							combo: newhotkey.combo,
+							filename
+						});
+					}
+				}
+				dispatch(modPageState('/', 'recording', undefined));
+			}
+		});
+	},
+	toggleEnable(e) {
+		if (!stopClickAndCheck0(e)) return;
+
+		let { dispatch } = this.props; // redux
+		let { hotkey } = this.props;
+		let { hotkeys, serials } = this.props; // mapped state
+
+		let { combo, enabled } = hotkey;
+
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+
+		let hashotkey = !!combo;
+		let isenabled = hotkey.enabled;
+		let allowenable = hashotkey && (isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < max_enable_count);
+
+		if (!allowenable) {
+			createModal(
+				ReactRouter.browserHistory.getCurrentLocation().pathname,
+				{
+					content_component: 'ModalContentComponentBuy',
+                    data: {
+                        buyqty: 1,
+                        toggleEnable: this.toggleEnable
+                    }
+					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
+					// template: 'Buy',
+					// body: 'Buy',
+					// ok: {
+					// 	label: browser.i18n.getMessage('confirm_maxhotkeysenabled'),
+					// 	// onClick: function
+					// },
+					// cancel: {
+					// 	label: browser.i18n.getMessage('dismiss_maxhotkeysenabled'),
+					// 	// onClick:
+					// }
+				}
+			);
+			return;
+		}
+
+		let newenabled = !hotkey.enabled; // true for enabled, false for disabled
+
+		if (newenabled) {
+			callInExe('addHotkey', { combo:hotkey.combo, filename: hotkey.command.filename }, ({didenable,reason,max_enable_count:max_enable_count_exe}) => {
+                if (!didenable) {
+                    alert(`Failed to enable hotkey.\nReason: ${reason}\nMax Enabled Count: ` + max_enable_count_exe);
+                    let newhotkey = { ...hotkey };
+            		dispatch(editHotkey(newhotkey));
+                }
+            });
+		} else {
+			callInExe('removeHotkey', {
+				filename: hotkey.command.filename
+			});
+		}
+
+		let newhotkey = { ...hotkey, enabled:newenabled };
+		dispatch(editHotkey(newhotkey));
+	},
+	render() {
+		let { hotkey } = this.props;
+		let { recording, hotkeys, serials } = this.props; // mapped state
+
+		let { enabled, combo, command } = hotkey;
+		let { share_unix, filename, content:{group, locales:{[gExtLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
+		// share_unix, filename, group, name, description, code
+
+        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+
+		let hashotkey = !!combo;
+
+		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
+		// cant use `locale.file_sha` and `code.file_sha` to determine `islocal`, as it might be edited and not yet shared
+		// it also CAN be shared but not yet PR merged
+
+		let isshared = (!islocal && share_unix); // if has share_unix, it doesnt have base_share_unix. base_share_unix would indicate that a remotecommand was locally edited
+
+		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
+
+		let isenabled, allowenable, tooltip_enable, color_enable;
+		if (hashotkey) {
+			isenabled = enabled;
+			allowenable = isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < max_enable_count;
+			tooltip_enable = browser.i18n.getMessage('tooltip_disablehotkey');
+			color_enable = 'danger';
+			if (!isenabled) { // its disabled
+				color_enable = 'success';
+				tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
+				if (!allowenable) color_enable = 'default';
+				// if (allowenable) tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
+				// else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', max_enable_count);
+			}
+		}
+
+		let isrecording_self = recording && recording.filename == filename;
+		let isrecording_other = recording && recording.filename != filename;
+		let comboprops = { combo };
+		if (isrecording_self) comboprops.combo = recording.current;
+
+
+		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature' },
+			React.createElement('div', { className:'thumbnail' },
+				// React.createElement('img', { src:'http://placehold.it/800x500', alt:'' }),
+				React.createElement('div', { className:'caption' },
+					React.createElement(HotkeyComboTxt, comboprops),
+					React.createElement('p', undefined,
+						name
+					),
+					React.createElement('p', undefined,
+						React.createElement('a', { href:'#', className:'btn btn-' + (isrecording_self ? 'danger' : (!isrecording_other && !hashotkey ? 'primary' : 'default')), 'data-tooltip':(isrecording_self ? browser.i18n.getMessage('tooltip_cancelchangehotkey') : (isrecording_other ? undefined : browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey'))), onClick:this.setHotkey, disabled:isrecording_other },
+							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
+						),
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_editcommand'), onClick:this.edit },
+							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
+						),
+						hashotkey && ' ',
+						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + color_enable, 'data-tooltip':tooltip_enable, onClick:this.toggleEnable, /*disabled:!allowenable*/ },
+							React.createElement('span', { className:'glyphicon glyphicon-off' })
+						),
+						' ',
+						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_removehotkeycommand'), onClick:this.trash },
+							React.createElement('span', { className:'glyphicon glyphicon-trash' })
+						),
+						!isshared && ' ',
+						!isshared && React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_sharecommand'), onClick:this.shareModal },
+							React.createElement('span', { className:'glyphicon glyphicon-globe' })
+						),
+						!isupdated && ' ',
+						!isupdated && React.createElement('a', { href:'#', className:'btn btn-info', 'data-tooltip':browser.i18n.getMessage('tooltip_updatecommand')},
+							React.createElement('span', { className:'glyphicon glyphicon-download' })
+						)
+					)
+				)
+			)
+		);
+	}
+}));
+
+var ModalContentShareCommand = ReactRedux.connect(
+    function(state, ownProps) {
+        return {
+            mos: state.oauth.github //mem_oauth_serviceid
+        }
+    }
+)(React.createClass({ // need var due to link8847777
+	displayName: 'ModalContentShareCommand',
+    share: async function() {
+		// share command
+
+        let { modal, closeModal } = this.props;
+		let { dispatch } = this.props; // redux
+        let { mos } = this.props; // mapped state
+
+		let { hotkey } = modal.data;
 		let { command } = hotkey;
 		let { filename } = command;
 
 		// let oc = nub.oauth.github; // oauth_config
-		let mos = store.getState().oauth.github; //mem_oauth_serviceid
 		if (!mos) {
 			if (confirm(browser.i18n.getMessage('github_auth_needed')))
 				callInBackground('openAuthTab', { serviceid:'github' });
@@ -1361,196 +1589,62 @@ const Hotkey = ReactRedux.connect(
 			alert(browser.i18n.getMessage('github_shared_fail', [ex]))
 		}
 	},
-	cancelRecordingIfSelf() {
-		// returns 1 if stopped, returns 0 if nothing recording, returns -1 if something else is recording
-		let { dispatch } = this.props; // redux
-		let { recording } = this.props; // mapped state
-		let { hotkey } = this.props;
-
-		let { filename } = hotkey.command;
-
-		if (recording) {
-			if (recording.filename == filename) {
-				dispatch(modPageState('/', 'recording', undefined));
-				callInExe('stopRecordingKeys');
-				return 1;
-			} else {
-				return -1;
-			}
-		} else {
-			return 0;
-		}
-	},
-	setHotkey(e) {
+	onCancel(e) {
 		if (!stopClickAndCheck0(e)) return;
 
-		let { dispatch } = this.props; // redux
-		let { hotkey } = this.props;
-		let { filename } = hotkey.command;
-
-		if (this.cancelRecordingIfSelf() !== 0)  throw 'either just canceled recording, OR something else is recording';
-
-		dispatch(modPageState('/', 'recording', {filename, current:{mods:[]} }));
-
-		callInExe('startRecordingKeys', undefined, ({__PROGRESS, recording:current, cancel}) => {
-			if (__PROGRESS) {
-				console.log('current:', current);
-				// replace current thats all
-				dispatch(modPageState('/', 'recording', {filename, current }));
-			} else {
-				console.log('ok done, cancel:', cancel, 'current:', current);
-				if (!cancel) {
-					console.log('no cancel, set it');
-					// in case user made changes while recording was going on
-					let updatedhotkey = store.getState().hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
-					let newhotkey = { ...updatedhotkey, combo:current };
-					dispatch(editHotkey(newhotkey));
-					// check if hotkey is enabled, if it is, then callInExe('addHotkey'), it will overwrite
-					if (updatedhotkey.enabled) {
-						callInExe('addHotkey', { // will overwrite the old one
-							combo: newhotkey.combo,
-							filename
-						});
-					}
-				}
-				dispatch(modPageState('/', 'recording', undefined));
-			}
-		});
+		let { closeModal } = this.props;
+		closeModal();
 	},
-	toggleEnable(e) {
+	onOk(e) {
 		if (!stopClickAndCheck0(e)) return;
 
-		let { dispatch } = this.props; // redux
-		let { hotkey } = this.props;
-		let { hotkeys, serials } = this.props; // mapped state
+		// let { closeModal, modal:{data:{onConfirm}} } = this.props;
+		// closeModal();
+        // onConfirm(undefined, true);
+        this.share();
+	},
+	switchDiff(e) {
+		if (!stopClickAndCheck0(e)) return;
 
-		let { combo, enabled } = hotkey;
+		let { modal:oldmodal } = this.props;
+		let modal = { ...oldmodal };
+		let compare_base = oldmodal.data.compare_base == 'remote' ? 'user' : 'remote';
+		modal.data = { ...oldmodal.data, compare_base };
 
-        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
+		store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
 
-		let hashotkey = !!combo;
-		let isenabled = hotkey.enabled;
-		let allowenable = hashotkey && (isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < max_enable_count);
-
-		if (!allowenable) {
-			createModal(
-				ReactRouter.browserHistory.getCurrentLocation().pathname,
-				{
-					content_component: 'ModalContentComponentBuy',
-                    data: {
-                        buyqty: 1,
-                        toggleEnable: this.toggleEnable
-                    }
-					// title: browser.i18n.getMessage('title_maxhotkeysenabled'),
-					// template: 'Buy',
-					// body: 'Buy',
-					// ok: {
-					// 	label: browser.i18n.getMessage('confirm_maxhotkeysenabled'),
-					// 	// onClick: function
-					// },
-					// cancel: {
-					// 	label: browser.i18n.getMessage('dismiss_maxhotkeysenabled'),
-					// 	// onClick:
-					// }
-				}
-			);
-			return;
-		}
-
-		let newenabled = !hotkey.enabled; // true for enabled, false for disabled
-
-		if (newenabled) {
-			callInExe('addHotkey', { combo:hotkey.combo, filename: hotkey.command.filename }, ({didenable,reason,max_enable_count:max_enable_count_exe}) => {
-                if (!didenable) {
-                    alert(`Failed to enable hotkey.\nReason: ${reason}\nMax Enabled Count: ` + max_enable_count_exe);
-                    let newhotkey = { ...hotkey };
-            		dispatch(editHotkey(newhotkey));
-                }
-            });
-		} else {
-			callInExe('removeHotkey', {
-				filename: hotkey.command.filename
-			});
-		}
-
-		let newhotkey = { ...hotkey, enabled:newenabled };
-		dispatch(editHotkey(newhotkey));
 	},
 	render() {
-		let { hotkey } = this.props;
-		let { recording, hotkeys, serials } = this.props; // mapped state
+		let { modal } = this.props;
+		let { data } = modal;
 
-		let { enabled, combo, command } = hotkey;
-		let { share_unix, filename, content:{group, locales:{[gExtLocale]:{name, description}}, code:{exec:code}} } = command; // TODO: multilocale
-		// share_unix, filename, group, name, description, code
+        let { progress } = data;
+        // progress - undefined/string;enum[] - text to show on upload progress of share. is undefined when have not yet clicked "Yes, Share Now"
 
-        let max_enable_count = nub.data.min_enable_count + Object.entries(serials).reduce((acc, [,a_buyqty]) => acc + a_buyqty, 0);
-
-		let hashotkey = !!combo;
-
-		let islocal = filename.startsWith('_'); // is something that was never submited to github yet
-		// cant use `locale.file_sha` and `code.file_sha` to determine `islocal`, as it might be edited and not yet shared
-		// it also CAN be shared but not yet PR merged
-
-		let isshared = (!islocal && share_unix); // if has share_unix, it doesnt have base_share_unix. base_share_unix would indicate that a remotecommand was locally edited
-
-		let isupdated = islocal ? true : true; // TODO: if its not local, i need to check if its updated, maybe add a button for "check for updates"?
-
-		let isenabled, allowenable, tooltip_enable, color_enable;
-		if (hashotkey) {
-			isenabled = enabled;
-			allowenable = isenabled || hotkeys.filter(a_hotkey => a_hotkey.enabled).length < max_enable_count;
-			tooltip_enable = browser.i18n.getMessage('tooltip_disablehotkey');
-			color_enable = 'danger';
-			if (!isenabled) { // its disabled
-				color_enable = 'success';
-				tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
-				if (!allowenable) color_enable = 'default';
-				// if (allowenable) tooltip_enable = browser.i18n.getMessage('tooltip_enablehotkey');
-				// else tooltip_enable = browser.i18n.getMessage('tooltip_maxhotkeysenabled', max_enable_count);
-			}
-		}
-
-		let isrecording_self = recording && recording.filename == filename;
-		let isrecording_other = recording && recording.filename != filename;
-		let comboprops = { combo };
-		if (isrecording_self) comboprops.combo = recording.current;
-
-
-		return React.createElement('div', { className:'col-md-3 col-sm-6 hero-feature' },
-			React.createElement('div', { className:'thumbnail' },
-				// React.createElement('img', { src:'http://placehold.it/800x500', alt:'' }),
-				React.createElement('div', { className:'caption' },
-					React.createElement(HotkeyComboTxt, comboprops),
-					React.createElement('p', undefined,
-						name
-					),
-					React.createElement('p', undefined,
-						React.createElement('a', { href:'#', className:'btn btn-' + (isrecording_self ? 'danger' : (!isrecording_other && !hashotkey ? 'primary' : 'default')), 'data-tooltip':(isrecording_self ? browser.i18n.getMessage('tooltip_cancelchangehotkey') : (isrecording_other ? undefined : browser.i18n.getMessage(hashotkey ? 'tooltip_changehotkey' : 'tooltip_sethotkey'))), onClick:this.setHotkey, disabled:isrecording_other },
-							React.createElement('span', { className:'glyphicon glyphicon-refresh' })
-						),
-						' ',
-						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_editcommand'), onClick:this.edit },
-							React.createElement('span', { className:'glyphicon glyphicon-pencil' })
-						),
-						hashotkey && ' ',
-						hashotkey && React.createElement('a', { href:'#', className:'btn btn-' + color_enable, 'data-tooltip':tooltip_enable, onClick:this.toggleEnable, /*disabled:!allowenable*/ },
-							React.createElement('span', { className:'glyphicon glyphicon-off' })
-						),
-						' ',
-						React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_removehotkeycommand'), onClick:this.trash },
-							React.createElement('span', { className:'glyphicon glyphicon-trash' })
-						),
-						!isshared && ' ',
-						!isshared && React.createElement('a', { href:'#', className:'btn btn-default', 'data-tooltip':browser.i18n.getMessage('tooltip_sharecommand'), onClick:this.share },
-							React.createElement('span', { className:'glyphicon glyphicon-globe' })
-						),
-						!isupdated && ' ',
-						!isupdated && React.createElement('a', { href:'#', className:'btn btn-info', 'data-tooltip':browser.i18n.getMessage('tooltip_updatecommand')},
-							React.createElement('span', { className:'glyphicon glyphicon-download' })
-						)
-					)
-				)
+		return React.createElement('div', { className:'modal-content' },
+			React.createElement('div', { className:'modal-header' },
+				!progress && React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+					React.createElement('span', { 'aria-hidden':'true'}, '×'),
+					React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+				),
+				React.createElement('h4', { className:'modal-title' }, 'Share Command?'),
+			),
+			React.createElement('div', { className:'modal-body' },
+				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_firstline')),
+				React.createElement('br'),
+				React.createElement('p', undefined, browser.i18n.getMessage(`modal_msg_${grade}_midline`)),
+				React.createElement('br'),
+				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_lastline')),
+				React.createElement('br'),
+				React.createElement('button', { className:'diff-switch-btn btn btn-default btn-xs pull-right', onClick:this.switchDiff },
+					React.createElement('span', { className:'glyphicon glyphicon-sort' }),
+					' ' + diff_switch_label
+				),
+				React.createElement('div', { className:'diff', dangerouslySetInnerHTML:diff_html })
+			),
+			React.createElement('div', { className:'modal-footer' },
+				!progress && React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, 'No, Not Now'),
+				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk, disabled:progress }, 'Yes, Share Now')
 			)
 		);
 	}
@@ -1706,14 +1800,14 @@ const PageCommandForm = ReactRedux.connect(
 
 		// test to set isvalid false if something unchanged
 		if (isvalid && iseditpage) {
-			// beautify the code
-			code = await new Promise(resolve => callInBootstrap('beautifyText', { js:code }, val=>resolve(val)));
 
 			// if edit, make sure at least one value is changed
 			Object.assign(domvalues, getFormValues(['group']));
             domvalues.code = await new Promise(resolve => callInBootstrap('beautifyText', { js:domvalues.code }, val=>resolve(val)));
 
 			let { group, locales:{[gExtLocale]:{name,description}}, code:{exec:code} } = hotkey.command.content; // TODO: multilocale point
+            // beautify the code
+			code = await new Promise(resolve => callInBootstrap('beautifyText', { js:code }, val=>resolve(val)));
 			let hotkeyvalues = { group, name, description, code };
 
 			if(!React.addons.shallowCompare({props:hotkeyvalues}, domvalues))

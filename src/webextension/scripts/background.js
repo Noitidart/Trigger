@@ -75,6 +75,8 @@ var callInMainworker = Comm.callInX2.bind(null, gBsComm, 'callInMainworker', nul
 var callInNative; // set in preinit, if its android, it is eqaul to callInMainworker, else it is equal to callInExe
 let callIn = (...args) => new Promise(resolve => window['callIn' + args.shift()](...args, val=>resolve(val))); // must pass undefined for aArg if one not provided, due to my use of spread here. had to do this in case first arg is aMessageManagerOrTabId
 
+var gExtLocale;
+
 // start - init
 let gStartupLoaderDots = 0;
 let gStartupLoaderDotsMax = 3;
@@ -105,6 +107,7 @@ async function preinit() {
         failed: [],
         inprog: [],
         pending: [
+            'locale',
             'storage',
             'platform_info',
             'platform_setup',
@@ -157,6 +160,17 @@ async function preinit() {
 			data: object - only if EXE_MISMATCH - keys: exeversion
 		}
 	*/
+    // get ext locale
+    basketmain.add(
+        async function() {
+            const stepname = 'locale';
+            startStep(stepname);
+            gExtLocale = await getSelectedLocale('myhotkeys_page_description');
+            console.log('gExtLocale:', gExtLocale);
+        }(),
+        () => finishStep('locale')
+    );
+
 	// fetch storage - set nub.self.startup_reason and nub.self.old_version
 	basketmain.add(
 		async function() {
@@ -205,12 +219,13 @@ async function preinit() {
 	basketmain.add(
 		async function() {
 			// GET PLATFORM INFO
-            const stepname = 'platform_setup'; // for throw
-            startStep('platform_info');
+            let stepname = 'platform_info'; // for throw
+            startStep(stepname);
 			nub.platform = await browser.runtime.getPlatformInfo();
-            finishStep('platform_info');
+            finishStep(stepname);
 
-            startStep('platform_setup');
+            stepname = 'platform_setup';
+            startStep(stepname);
 
             // SET CALLINNATIVE
             callInNative = nub.platform.os == 'android' ? callInMainworker : callInExe;
@@ -478,12 +493,19 @@ function triggerCommand(aArg) {
 	let filename = aArg;
 	console.log('exe triggering filename:', filename);
 	let hotkey = nub.stg.pref_hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
-	if (hotkey) resetLabel(hotkey.command.content.code.exec);
+
+	if (hotkey) {
+        let showNotification = showNotificationTemplate.bind(null, hotkey.command.content.locales[gExtLocale].name);
+        eval(hotkey.command.content.code.exec);
+    }
 	else console.error('could not trigger because could not find hotkey with filename:', filename);
 }
 
+function doEval(str) {
+    eval(str);
+}
+
 function resetLabel(label) {
-    eval(label);
     // console.log('in resetLabel:', label);
     // label = 'document.documentElement.removeAttribute("onreset");' + label + ';';
     //
@@ -831,6 +853,58 @@ function formatNubPaths() {
 	}
 }
 // end - addon specific helpers
+
+// start - document functions for user commands
+function showNotificationTemplate(filename, subtitle, message) {
+    // filename is hotkey.command.filename
+    browser.notifications.create({
+        type: 'basic',
+        iconUrl: browser.extension.getURL('images/icon48.png'),
+        title: browser.i18n.getMessage('commandcode_notiftitle', [filename, subtitle]),
+        message
+    });
+}
+async function polyfillTab(tabid, polyfills=['comm', 'browser', 'babel']) {
+    let hascomm;
+    try {
+        hascomm = await browser.tabs.executeScript(tabid, {
+            allFrames: true,
+            code: `(function() {
+                return typeof(gBgComm) == 'undefined' ? false : true;
+            })()`
+        });
+    } catch(ex) {
+        // probably a privileged tab
+        console.error('error executing script:', ex);
+        if (ex.message == 'No window matching {"all_frames":true,"matchesHost":["<all_urls>"]}') {
+            throw browser.i18n.getMessage('webext_disallowedtab');
+        } else {
+            throw ex.toString();
+        }
+    }
+    console.log('hascomm:', hascomm); // array for all frames in tab
+
+    hascomm = !hascomm.includes(false); // make it a single value // TODO: insert only into frames that dont have it
+    if (!hascomm) {
+        await browser.tabs.executeScript(tabid, {
+            file: '/scripts/3rd/comm/webext.js',
+            allFrames: true
+        });
+        await browser.tabs.executeScript(tabid, {
+            allFrames: true,
+            code: `(function() {
+                gBgComm = new Comm.client.webextports('contentscript');
+                callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
+                callInExe = Comm.callInX2.bind(null, gBgComm, 'callInExe', null);
+                callInBootstrap = Comm.callInX2.bind(null, gBgComm, 'callInBootstrap', null);
+                callInMainworker = Comm.callInX2.bind(null, gBgComm, 'callInMainworker', null);
+            })()`
+        });
+    }
+
+    return true;
+}
+// end - document functions for user commands
 
 preinit()
 .then(val => console.log('preinit done'))

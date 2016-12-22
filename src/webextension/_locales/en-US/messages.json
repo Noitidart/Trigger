@@ -159,6 +159,7 @@
 	"close": { "message": "Close" },
 	"okay": { "message": "Okay" },
 	"cancel": { "message": "Cancel" },
+	"error": { "message": "Error" },
 
 	"loading_community": { "message": "Loading community from Github..." },
 
@@ -167,6 +168,8 @@
 	"github_shared_fail": { "message":"Failed to share, error returned was: \"$ERROR$\"", "placeholders": {"ERROR":{"content":"$1"}} },
 
     "invalidpage_message": { "message": "You have reached a page that does not exist." },
-    "invalidpage_link": { "message": "Go To Main Page" }
+    "invalidpage_link": { "message": "Go To Main Page" },
 
+    "commandcode_notiftitle": { "message": "$COMMAND_NAME$ - $NOTIFICATION_SUBTITLE$", "placeholders": {"COMMAND_NAME":{"content":"$1"}, "NOTIFICATION_SUBTITLE":{"content":"$2"}} },
+    "webext_disallowedtab": { "message": "Current tab is a privileged tab. Extensions are disallowed from running in it." }
 }
