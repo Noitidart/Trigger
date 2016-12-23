@@ -496,7 +496,12 @@ function triggerCommand(aArg) {
 
 	if (hotkey) {
         let showNotification = showNotificationTemplate.bind(null, hotkey.command.content.locales[gExtLocale].name);
-        eval(hotkey.command.content.code.exec);
+        try {
+            eval(hotkey.command.content.code.exec);
+        } catch(err) {
+            console.error('got err:', err);
+            showNotification(browser.i18n.getMessage('error'), err.toString());
+        }
     }
 	else console.error('could not trigger because could not find hotkey with filename:', filename);
 }
@@ -864,42 +869,64 @@ function showNotificationTemplate(filename, subtitle, message) {
         message
     });
 }
+async function getTabExtProperties(aArg, aReportProgress, aComm, aPortName) {
+    // called to get webext frameId:FRAMEID, tabId:TABID
+    // aComm is gPortsComm, so the getPort of gPortsComm requires a port name
+    let port = aComm.getPort(aPortName);
+    return {
+        tabid: port.sender.tab.id,
+        frameid: port.sender.frameId
+    };
+}
 async function polyfillTab(tabid, polyfills=['comm', 'browser', 'babel']) {
-    let hascomm;
-    try {
-        hascomm = await browser.tabs.executeScript(tabid, {
-            allFrames: true,
-            code: `(function() {
-                return typeof(gBgComm) == 'undefined' ? false : true;
-            })()`
-        });
-    } catch(ex) {
-        // probably a privileged tab
-        console.error('error executing script:', ex);
-        if (ex.message == 'No window matching {"all_frames":true,"matchesHost":["<all_urls>"]}') {
-            throw browser.i18n.getMessage('webext_disallowedtab');
-        } else {
-            throw ex.toString();
-        }
-    }
-    console.log('hascomm:', hascomm); // array for all frames in tab
+    let frames = await browser.webNavigation.getAllFrames({tabId:tabid});
+    let frameids = frames.map(a_frame => a_frame.frameId); // all - privileged tabs are splicd out in the below loop
+    let frameids_disallowed = [];
+    if (polyfills.includes('comm')) {
+        for (let frameid of frameids) {
+            let hascomm;
+            try {
+                ([ hascomm ] = await browser.tabs.executeScript(tabid, {
+                    frameId: frameid,
+                    code: `typeof(gBgComm) != 'undefined'`
+                }));
+            } catch(ex) {
+                // if (/No window matching {"all_frames":true,"matchesHost":["<all_urls>"]}/.test(ex.message)) {
+                if (/No window matching.*?"matchesHost":.*?<all_urls>/i.test(ex.message)) {
+                    frameids_disallowed.push(frameid);
+                    continue;
+                } else {
+                    console.error('ex:', ex);
+                    throw ex.toString(); // to string because i use this polyfillTab func in command code, and throwing object causes "Unhandled promise rejection Error: Type error for parameter options (Error processing message: Expected string instead of {}) for notifications.create." error in browser console
+                }
+            }
 
-    hascomm = !hascomm.includes(false); // make it a single value // TODO: insert only into frames that dont have it
-    if (!hascomm) {
-        await browser.tabs.executeScript(tabid, {
-            file: '/scripts/3rd/comm/webext.js',
-            allFrames: true
-        });
-        await browser.tabs.executeScript(tabid, {
-            allFrames: true,
-            code: `(function() {
-                gBgComm = new Comm.client.webextports('contentscript');
-                callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
-                callInExe = Comm.callInX2.bind(null, gBgComm, 'callInExe', null);
-                callInBootstrap = Comm.callInX2.bind(null, gBgComm, 'callInBootstrap', null);
-                callInMainworker = Comm.callInX2.bind(null, gBgComm, 'callInMainworker', null);
-            })()`
-        });
+            if (!hascomm) {
+                await browser.tabs.executeScript(tabid, {
+                    frameId: frameid,
+                    file: '/scripts/3rd/comm/webext.js'
+                });
+                await browser.tabs.executeScript(tabid, {
+                    frameId: frameid,
+                    code: `(function() {
+                        gBgComm = new Comm.client.webextports('contentscript');
+                        callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
+                        callInExe = Comm.callInX2.bind(null, gBgComm, 'callInExe', null);
+                        callInBootstrap = Comm.callInX2.bind(null, gBgComm, 'callInBootstrap', null);
+                        callInMainworker = Comm.callInX2.bind(null, gBgComm, 'callInMainworker', null);
+                        // callInBackground('getTabExtProperties', undefined, function(aArg) {
+                        //     __FRAMEID = aArg.frameid;
+                        //     __TABID = aArg.tabid;
+                        // });
+                    })()`
+                });
+            }
+        }
+
+        frameids = frameids.filter(a_frameid => !frameids_disallowed.includes(a_frameid));
+        console.log('viable frameids:', frameids);
+
+        if (!frameids.length) throw browser.i18n.getMessage('webext_disallowedtab');
     }
 
     return true;
