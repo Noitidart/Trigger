@@ -7,6 +7,7 @@ let callIn = (...args) => new Promise(resolve => window['callIn' + args.shift()]
 
 let nub;
 let store;
+const shallowCompare = React.addons.shallowCompare;
 
 let gSupressUpdateHydrantOnce;
 
@@ -14,11 +15,10 @@ async function init() {
 	console.error('calling fetchData with hydrant skeleton:', hydrant);
 	document.title = browser.i18n.getMessage('addon_name');
 
-	// gExtLocale = await new Promise(resolve => callInBackground('getClosestAvailableLocale', undefined, val=>resolve(val))) || 'en-US';
-	gExtLocale = await new Promise(resolve => callInBackground('getSelectedLocale', 'myhotkeys_page_description', val=>resolve(val)));
-	gUserLocales = (await new Promise(resolve => callInBackground('getUserPreferredLocales', undefined, val=>resolve(val)))).map(el => el.replace(/_/g, '-'));
+	gExtLocale = await callIn('Background', 'getSelectedLocale', 'myhotkeys_page_description');
+	gUserLocales = (await callIn('Background', 'getUserPreferredLocales', undefined)).map(el => el.replace(/_/g, '-'));
 
-	let data = await new Promise( resolve => callInBackground('fetchData', { hydrant_instructions, nub:1 }, val => resolve(val)) );
+    let data = await callIn('Background', 'fetchData', { hydrant_instructions, nub:1 });
 
 	nub = data.nub;
 
@@ -57,8 +57,149 @@ async function init() {
 window.addEventListener('DOMContentLoaded', init, false);
 
 // app page stuff
-function focusAppPage() {
+// start - for UNREF_KEYS
+function reduceToNonRefsCallback(acc, [kname, kval]) {
+    let type = typeof(kval);
+    acc.keys.push(kname);
+    if (type == 'string' || type == 'number' || kval === undefined || kval === null) {
+        acc.vals.push(kval);
+    } else {
+        acc.vals.push(0); // unreffed
+    }
+    return acc;
+}
+function sortByFirstElOfArr(a, b) {
+    return a[0].localeCompare(b[0]);
+}
+function reduceToNonRefs(obj) {
+    // the object is sorted by keys
+    if (!obj || typeof(obj) != 'object') return [[], []];
+    let arrofobj = Object.entries(obj);
+    arrofobj.sort(sortByFirstElOfArr);
+    let {keys, vals} = arrofobj.reduce( reduceToNonRefsCallback, {keys:[],vals:[]} );
+    return [keys, vals];
+}
+const UND = 'UND';
+const SHCMP = 'SHCMP'
+const UNREF_KEYS = 'UNREF_KEYS'; // non-ref keys, so all but arrays/objects
+// end - for UNREF_KEYS
+function doesAnyTestPass(cur, next, instructs) {
+    // let instructs = { // key is the dotpath
+    //     'combo': [UND],
+    //     'comobo.keyname': [SHCMP],
+    //     'comobo.mods': [SHCMP],
+    //     'command': [UNREF_KEYS],
+    // };
+
+    for (let [dotpath, tests] of Object.entries(instructs)) {
+        let caccess = dotpath == '.' ? cur : deepAccessUsingString(cur, dotpath);
+        let naccess = dotpath == '.' ? next : deepAccessUsingString(next, dotpath);
+
+        // console.log('dotpath:', dotpath, 'tests:', tests.toString(), 'caccess:', caccess, 'naccess:', naccess);
+
+        if (tests.includes(UND)) {
+            if (caccess && !naccess) return true;
+            if (!caccess && naccess) return true;
+        }
+
+        if (tests.includes(SHCMP)) {
+            if (shallowCompare({props:caccess}, naccess)) return true;
+        }
+
+        if (tests.includes(UNREF_KEYS)) {
+            let [ckeys, cvals] = reduceToNonRefs(caccess);
+            let [nkeys, nvals] = reduceToNonRefs(naccess);
+            if (ckeys.length !== nkeys.length) return true;
+            if (shallowCompare({props:ckeys}, nkeys)) return true; // if one has X key and the other doesnt
+            // console.log('testing vals', 'cvals:', cvals, 'nvals:', nvals);
+            if (shallowCompare({props:cvals}, nvals)) return true;
+        }
+
+        let customs = tests.filter(test => typeof(test) == 'function');
+        for (let custom of customs) {
+            if (custom(caccess, naccess)) return true;
+        }
+    }
+}
+async function focusAppPage() {
 	// console.log('focused!!!!!!');
+    let data = await callIn('Background', 'fetchData', { hydrant_instructions });
+    // console.log('data:', data);
+
+    let newhydrant = data.hydrant;
+
+	// objectAssignDeep(hydrant, data.hydrant); // dont update hydrant if its undefined, otherwise it will screw up all default values for redux
+    let newmainkeys = {};
+
+    let state = store.getState();
+
+    let checks = [
+        {
+            name: 'serials',
+            dotpath: {
+                data: 'hydrant.stg.pref_serials',
+                store: 'serials'
+            },
+            isDiff: (cserials, nserials) => doesAnyTestPass(cserials, nserials, {'.':[SHCMP]})
+        },
+        {
+            name: 'oauth',
+            dotpath: {
+                data: 'hydrant.stg.mem_oauth',
+                store: 'oauth'
+            },
+            isDiff: (coauth, noauth) => doesAnyTestPass(coauth, noauth, {'github':[SHCMP]})
+        },
+        {
+            name: 'hotkeys',
+            dotpath: {
+                data: 'hydrant.stg.pref_hotkeys',
+                store: 'hotkeys'
+            },
+            isDiff(chotkeys, nhotkeys) {
+                // chotkeys is array of objects
+                if (chotkeys.length != nhotkeys.length) return true;
+
+                let instructs = { // key is the dotpath
+                    'enabled': [SHCMP],
+                    'combo': [UND],
+                    'comobo.keyname': [SHCMP],
+                    'comobo.mods': [SHCMP],
+                    'command': [UNREF_KEYS],
+                    'command.content.code': [SHCMP],
+                    'command.content.group': [SHCMP],
+                    'command.content.locales': [UNREF_KEYS, (clocales, nlocales) => {
+                        // this test happens after UNREF_KEYS, so it means the smae exact keys -- i now want to test if the values are different
+                        let locales = Object.keys(clocales);
+                        for (let locale of locales)
+                            if (doesAnyTestPass(clocales[locale], nlocales[locale], {'.':[SHCMP]}))
+                                return true
+                    }],
+                };
+
+                let l = chotkeys.length;
+                for (let i=0; i<l; i++) {
+                    let chotkey = chotkeys[i];
+                    let nhotkey = nhotkeys[i];
+                    if (doesAnyTestPass(chotkey, nhotkey, instructs)) return true;
+                };
+            }
+        }
+    ];
+
+    for (let check of checks) {
+        let { name, dotpath, isDiff } = check;
+        let cur = deepAccessUsingString(state, dotpath.store);
+        let next = deepAccessUsingString(data, dotpath.data);
+        // console.log('dotpath.data:', dotpath.data, 'next:', next, 'data:', data);
+        if (isDiff(cur, next)) {
+            console.log(`${name} is changed! was:`, cur, 'now:', next);
+            newmainkeys[dotpath.store] = next;
+        }
+    }
+
+    if (Object.keys(newmainkeys).length) store.dispatch(setMainKeys(newmainkeys));
+    else console.log('nothing changed');
 }
 
 // GLOBALS
@@ -231,7 +372,7 @@ function pages_state(state={}, action) {
 			for (let pathname of pathnames) {
 				let pagestate = state[pathname];
 				let newpagestate = namevalues;
-				if (React.addons.shallowCompare({props:pagestate}, newpagestate)) {
+				if (shallowCompare({props:pagestate}, newpagestate)) {
 					newstate_isnew = true;
 					if (newpagestate) newstate[pathname] = newpagestate;
 					else delete newstate[pathname];
@@ -2064,7 +2205,7 @@ const PageCommandForm = ReactRedux.connect(
 			code = await new Promise(resolve => callInBootstrap('beautifyText', { js:code }, val=>resolve(val)));
 			let hotkeyvalues = { group, name, description, code };
 
-			if(!React.addons.shallowCompare({props:hotkeyvalues}, domvalues))
+			if(!shallowCompare({props:hotkeyvalues}, domvalues))
 				isvalid = false;
 		}
 

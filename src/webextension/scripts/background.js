@@ -510,16 +510,6 @@ function doEval(str) {
     eval(str);
 }
 
-function resetLabel(label) {
-    // console.log('in resetLabel:', label);
-    // label = 'document.documentElement.removeAttribute("onreset");' + label + ';';
-    //
-    // document.documentElement.setAttribute('onreset', label);
-    // document.documentElement.dispatchEvent(new CustomEvent('reset'));
-    // document.documentElement.removeAttribute('onreset');
-    // console.log('ok done dispatching?');
-};
-
 async function fetchData(aArg={}) {
 	let { hydrant_instructions, nub:wantsnub } = aArg;
 	// xprefs means xpcom prefs
