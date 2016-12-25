@@ -2180,7 +2180,14 @@ const PageCommandForm = ReactRedux.connect(
 		// hotkey is undefined, unless `iseditpage` is true
 		let { location:{pathname} } = this.props; // router
 
-		let iseditpage = !!hotkey;
+        let iseditpage = pathname.toLowerCase().startsWith('/edit');
+
+        if (iseditpage && !hotkey) {
+            // if no hotkey, but is edit page then this means the hotkey was removed link87777112
+            // i dont know why `validateForm` triggers after i trash a hotkey in a tab and then focus edit page while that hotkey command was in edit // TODO: figure this out
+            dispatch(modPageState(pathname, { isvalid:false })); // modPageState does the difference check, if nothing in namevalues is changed it doesnt update
+            return;
+        }
 
 		let isvalid = true; // new
 
@@ -2222,7 +2229,9 @@ const PageCommandForm = ReactRedux.connect(
 	},
 	revertCode(e) {
 		let { hotkey } = this.props; // mapped state
-		let iseditpage = !!hotkey;
+        let { location:{pathname} } = this.props; // router
+
+        let iseditpage = pathname.toLowerCase().startsWith('/edit');
 		if (!stopClickAndCheck0(e) || !iseditpage) return;
 
 		document.getElementById('code').value = hotkey.command.content.code.exec;
@@ -2232,8 +2241,11 @@ const PageCommandForm = ReactRedux.connect(
     },
     componentWillUpdate(nextProps) {
         let { hotkey } = nextProps; // mapped state
-        let iseditpage = !!hotkey;
-        if (iseditpage) {
+        let { location:{pathname} } = this.props; // router
+
+        let iseditpage = pathname.toLowerCase().startsWith('/edit');
+        if (iseditpage && hotkey) { // `&& hotkey` because its not there if it was removed
+            console.log('yes has hotkey in nextProps so doing update of fields if changed, hotkey:', hotkey);
             let { group, locales:{[gExtLocale]:{ name,description }}, code:{ exec:code } } = hotkey.command.content;
             let nextvalues = { group, name, description, code };
             let domvalues = getFormValues(['name', 'description', 'code', 'group']);
@@ -2260,8 +2272,31 @@ const PageCommandForm = ReactRedux.connect(
 		// hotkey is undefined, unless `iseditpage` is true
 		let { location:{pathname} } = this.props; // router
 		// pathname - needed for SaveCommandBtn so it can get `isvalid` from right `pages_state`
-		let iseditpage = !!hotkey;
+        let iseditpage = pathname.toLowerCase().startsWith('/edit');
 
+        if (iseditpage && !hotkey) {
+            // the hotkey was deleted from another tab
+            return React.createElement('span', undefined,
+    			// controls
+    			React.createElement('div', { className:'row text-center' },
+    				React.createElement('div', { className:'col-lg-12' },
+    					React.createElement('a', { href:'#', className:'btn btn-default pull-left', onClick:this.goBack},
+    						React.createElement('span', { className:'glyphicon glyphicon-triangle-left' }),
+    						' ' + browser.i18n.getMessage('back')
+    					),
+    					React.createElement(SaveCommandBtn, { pathname, iseditpage, hotkey })
+    				)
+    			),
+    			React.createElement('hr'),
+    			// content
+    			React.createElement('div', { className:'row text-center' },
+                    React.createElement('button', { className:'btn btn-lg btn-default no-btn' },
+                        React.createElement('span', { className:'glyphicon glyphicon-trash' }),
+                        ' ' + 'You trashed this hotkey in another tab' // link87777112
+                    )
+                )
+            );
+        }
 		// default values for form fields
 		let name, description, code, group=0; // default group "Uncategorized"
 		if (iseditpage) // take from `hotkey`
@@ -2439,9 +2474,10 @@ const SaveCommandBtn = ReactRedux.connect(
 		}
 	},
 	render() {
-		let { iseditpage } = this.props;
+		let { iseditpage, hotkey } = this.props;
 		let { isvalid } = this.props; // mapped state
 
+        if (iseditpage && !hotkey) isvalid = false; // link87777112 - i might not need this line as it might be redundtant
 		return React.createElement('a', { href:'#', className:'btn btn-success pull-right', disabled:!isvalid, onClick:this.onClick, tabIndex:(isvalid ? undefined : '-1') },
 			React.createElement('span', { className:'glyphicon glyphicon-ok' }),
 			' ' + browser.i18n.getMessage(iseditpage ? 'btn_savecommand' : 'btn_addcommand')
