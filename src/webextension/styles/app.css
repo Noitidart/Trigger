@@ -58,7 +58,7 @@ a[data-tooltip]:hover::before {
 
 
 .glyphicon.spinning {
-    animation: spin 1s infinite linear;
+    animation: spin 1500ms infinite linear;
 }
 
 @keyframes spin {
@@ -539,3 +539,9 @@ select.btn {
   text-indent: 35px;
 }
 /* end - enter form */
+
+.status-nobtn {
+    color: inherit !important;
+    text-decoration: none !important;
+    pointer: inherit !important;
+}

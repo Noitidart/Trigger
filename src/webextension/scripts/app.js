@@ -635,6 +635,20 @@ const Modal = React.createClass({
 		}
 		return this.scrollbar_width;
 	},
+    componentDidMount() {
+        let dialog = document.querySelector('.modal-dialog');
+        let modal = document.querySelector('.modal');
+        if (dialog.offsetHeight > window.innerHeight) {
+            document.body.style.overflow = 'hidden';
+            modal.style.overflowY = 'scroll';
+        }
+    },
+    componentWillUnmount() {
+        let dialog = document.querySelector('.modal-dialog');
+        let modal = document.querySelector('.modal');
+        document.body.style.overflow = '';
+        modal.style.overflowY = '';
+    },
 	render() {
 		let { modal } = this.props;
 
@@ -890,13 +904,13 @@ var ModalContentComponentBuy = ReactRedux.connect( // need var due to link884777
                     browser.i18n.getMessage('message_failtrans'),
                     React.createElement('br'),
                     React.createElement('br'),
-                    React.createElement('b', undefined, browser.i18n.getMessage('load_reason') + ' '),
+                    React.createElement('b', undefined, browser.i18n.getMessage('load_reason:') + ' '),
                     reason,
                     React.createElement('br'),
-                    React.createElement('b', undefined, browser.i18n.getMessage('status') + ' '),
+                    React.createElement('b', undefined, browser.i18n.getMessage('status:') + ' '),
                     status,
                     React.createElement('br'),
-                    React.createElement('b', undefined, browser.i18n.getMessage('response') + ' '),
+                    React.createElement('b', undefined, browser.i18n.getMessage('response:') + ' '),
                     JSON.stringify(response)
                 ),
                 ok: { label:browser.i18n.getMessage('try_again'), onClick:this.onOk }
@@ -1088,22 +1102,23 @@ const Header = React.createClass({
 const PageMyHotkeys = ReactRedux.connect(
 	function(state, ownProps) {
 		return {
-			hotkeys: state.hotkeys
+			hotkeys: state.hotkeys,
+            mos: state.oauth.github
 		}
 	}
 )(React.createClass({
 	displayName: 'PageMyHotkeys',
 	render() {
-		let { hotkeys } = this.props;
+		let { hotkeys, mos } = this.props; // mapped state
 
 		return React.createElement('span', undefined,
 			// controls
 			React.createElement('div', { className:'row text-center' },
 				React.createElement('div', { className:'col-lg-12' },
 					browser.i18n.getMessage('myhotkeys_page_description'),
-					React.createElement('br'),
-					React.createElement('br'),
-					React.createElement(OauthManager)
+					mos && React.createElement('br'),
+					mos && React.createElement('br'),
+					mos && React.createElement(OauthManager)
 				)
 			),
 			React.createElement('hr'),
@@ -1367,6 +1382,10 @@ const Hotkey = ReactRedux.connect(
 	}
 }));
 
+function throwUnhandledResponse(xperr, extrafields) {
+    let { reason, xhr:{response, status, responseURL:url} } = xperr;
+    throw { ...extrafields, reason:'UNHANDLED_SERVER_RESPONSE', xhr:{response, reason, status, url} };
+}
 var ModalContentShareCommand = ReactRedux.connect(
     function(state, ownProps) {
         return {
@@ -1387,39 +1406,42 @@ var ModalContentShareCommand = ReactRedux.connect(
 		let { filename } = command;
 
 		// let oc = nub.oauth.github; // oauth_config
-		if (!mos) {
-			if (confirm(browser.i18n.getMessage('github_auth_needed')))
-				callInBackground('openAuthTab', { serviceid:'github' });
-			return;
-		}
 
 		let hotkey_withnewcommand = JSON.parse(JSON.stringify(hotkey));
 		let newcommand = hotkey_withnewcommand.command;
 
 		try {
 			// step 1 - delete repo
+            this.modModalData({ progress:'SHARING_DELETING_FORK_ST' });
 			// `https://api.github.com/repos/${mos.dotname}/testapi`
 			// gives 204 when done. or 404 if it wasnt there meaning nothing to delete
 			await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
 
 			// step 2 - fork it - 202 after forked - even if already forked it gives 202
+            this.modModalData({ progress:'SHARING_FORKING' });
 			// https://api.github.com/repos/Noitidart/testapi/forks
 			let xpfork = await xhrPromise('https://api.github.com/repos/Noitidart/Trigger-Community/forks', { method:'POST', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
 			console.log('xpfork:', xpfork);
-			if (xpfork.xhr.status !== 202)
-				throw 'Failed to do step "Pull Request Step 2 - Fork Repo"';
+			if (xpfork.xhr.status !== 202) throwUnhandledResponse(xpfork); // throw 'Failed to do step "Pull Request Step 2 - Fork Repo"';
 
 			// step 2.1 - need to wait till fork completes - i do 1min - docs say it can take up to 5, if more then that they say contact support
 			// http://stackoverflow.com/a/33667417/1828637
 			// (new Date()).toISOString().replace(/\.\d+Z/,'Z')
 			// https://api.github.com/repos/noitdev/testapi/commits?since=2016-11-20T06:14:02Z
 			// if get 409 then not yet done. wait till get 200
-			await doRetries(1000, 60, async function() {
+			await doRetries(1000, 60, async function(aCnt) {
+                this.modModalData({ progress:'SHARING_CHECKING_FORK_DONE', progress_data:(aCnt+1) });
 				let data = queryStringDom({ since: (new Date()).toISOString().replace(/\.\d+Z/,'Z') });
 				let xpwait = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/commits?${data}`, { headers:{ Accept:'application/vnd.github.v3+json' } });
 				console.log('xpwait:', xpwait);
-				if (xpwait.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 2.1 - Wait Fork Finish"';
-			});
+
+                if (xpwait.xhr.status === 409) {
+                    this.modModalData({ progress:'SHARING_WAITING_FORK_DONE', progress_data:(aCnt+2) });
+                    throw 'retry';
+                }
+                else if (xpwait.xhr.status !== 200) throwUnhandledResponse(xpwait, { STOP_RETRIES:1 }); // throw 'Failed to do step "Pull Request Step 2.1 - Wait Fork Finish"';
+                // else its 200 so success, return undefined
+			}.bind(this));
 
 			// step 3 - create/update file
 			let prtitle;
@@ -1435,15 +1457,20 @@ var ModalContentShareCommand = ReactRedux.connect(
 					// `https://api.github.com/repos/noitdev/testapi/contents/${newfilename}-code.json`
 					let newfilename = filename.substr(1);
 					while (true) {
+                        this.modModalData({ progress:'SHARING_NEW_GENERATING_FILENAME' });
 						let xpexists = await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community/contents/${newfilename}.json`, { headers:{ Accept:'application/vnd.github.v3+json' } });
 						console.log('xpexists:', xpexists);
 						if (xpexists.xhr.status === 404) break; // newfilename is not taken
+						else if (xpexists.xhr.status !== 200) throwUnhandledResponse(xpexists);
+                        // else its 200, meaning filename taken
+
 						newfilename = genFilename();
-						await promiseTimeout(200);
+						// await promiseTimeout(200);
 					}
 					newcommand.filename = newfilename;
 
 					// step 3a.2 - create file
+                    this.modModalData({ progress:'SHARING_NEW_UPLOADING_FILE' });
 					// create commit_message
 					let commit_message = {
 						type: 'new',
@@ -1472,22 +1499,22 @@ var ModalContentShareCommand = ReactRedux.connect(
 						}
 					});
 					console.log('xpcreate:', xpcreate);
-					if (xpcreate.xhr.status !== 201) {
-						throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
-					} else {
-						let file_sha = xpcreate.xhr.response.content.sha;
+					if (xpcreate.xhr.status === 201) {
+                        let file_sha = xpcreate.xhr.response.content.sha;
 						// delete newcommand.base_file_sha; // doesnt have base_commit_sha as this is "never shared yet"
 						// delete newcommand.base_share_unix; // doesnt have base_commit_sha as this is "never shared yet"
 						// delete newcommand.changes_since_base; // doesnt have base_commit_sha as this is "never shared yet"
 						newcommand.file_sha = file_sha;
 						newcommand.share_unix = commit_message.unix;
-					}
+                    }
+                    else throwUnhandledResponse(xpcreate); // throw 'Failed to do step "Pull Request Step 3a.2 - Create File"';
 				} else {
 					// update file
 
 					// if (!command.changes_since_base) throw 'You made no changes since last update, nothing to share!'
 
 					// step 3b.1 get sha of file - actually get contents so i can calculate changes
+                    this.modModalData({ progress:'SHARING_UPDATE_FETCHING_SHA'});
 					let xpsha = await xhrPromise(`https://api.github.com/repos/Noitidart/Trigger-Community/contents/${filename}.json`, { restype:'json', headers:{ Accept:'application/vnd.github.v3+json' } });
 					console.log('xpsha:', xpsha);
 					if (xpsha.xhr.status === 404) {
@@ -1499,7 +1526,7 @@ var ModalContentShareCommand = ReactRedux.connect(
 						goto--; // goto = -1;
 						continue;
 					}
-					if (xpsha.xhr.status !== 200) throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filename}" File SHA and Compare Master Contents"';
+					if (xpsha.xhr.status !== 200) throwUnhandledResponse(xpsha); // throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filename}" File SHA and Compare Master Contents"';
 					let { sha:master_file_sha, content:master_content} = xpsha.xhr.response;
 					// let base_file_sha = command.base_file_sha;
 					let use_file_sha = master_file_sha; // TODO: can do experiement, see how it affects it. im thinking maybe the PR gets inserted between? i dont know, but i think it makes more sense to update master as i only want a single version (and local versions) out there online.
@@ -1513,6 +1540,7 @@ var ModalContentShareCommand = ReactRedux.connect(
 					prtitle = 'Update command ' + Object.keys(changes_since_master).sort().join(', ');
 
 					// step 3b.2 - update file
+                    this.modModalData({ progress:'SHARING_UPDATE_UPLOADING_FILE'});
 					let commit_message = {
 						type: 'update',
 						filename,
@@ -1536,20 +1564,20 @@ var ModalContentShareCommand = ReactRedux.connect(
 						}
 					});
 					console.log('xpupdate:', xpupdate);
-					if (xpupdate.xhr.status !== 200) {
-						throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
-					} else {
-						let file_sha = xpupdate.xhr.response.content.sha;
+                    if (xpupdate.xhr.status === 200) {
+                        let file_sha = xpupdate.xhr.response.content.sha;
 						delete newcommand.base_file_sha;
 						delete newcommand.base_share_unix;
 						// delete newcommand.changes_since_base;
 						newcommand.file_sha = file_sha;
 						newcommand.share_unix = commit_message.unix;
-					}
+                    }
+                    else throwUnhandledResponse(xpupdate); // throw 'Failed to do step "Pull Request Step 3b.2 - Update File"';
 				}
 			}
 
 			// step 4 - create pull request
+            this.modModalData({ progress:'SHARING_CREATING_DISCUSS_TOPIC'});
 			// https://api.github.com/repos/Noitidart/testapi/pulls
 			let xppr = await xhrPromise({
 				url: 'https://api.github.com/repos/Noitidart/Trigger-Community/pulls',
@@ -1557,7 +1585,7 @@ var ModalContentShareCommand = ReactRedux.connect(
 				restype: 'json',
 				data: JSON.stringify({
 					title: prtitle,
-					body: 'see title',
+					body: ReactDOM.findDOMNode(this).querySelector('textarea').value.trim(),
 					head: `${mos.login}:master`,
 					base: 'master'
 				}),
@@ -1567,26 +1595,44 @@ var ModalContentShareCommand = ReactRedux.connect(
 				}
 			});
 			console.log('xppr:', xppr);
-			if (xppr.xhr.status !== 201)
-				throw 'Failed to do step "Pull Request Step 4 - Create Request"';
+			if (xppr.xhr.status !== 201) throwUnhandledResponse(xppr); // throw 'Failed to do step "Pull Request Step 4 - Create Request"';
 
 			let { html_url:prurl } = xppr.xhr.response;
 
+            // step 5 - delete fork
+            this.modModalData({ progress:'SHARING_DELETING_FORK_END'});
 			// `https://api.github.com/repos/${mos.dotname}/testapi`
 			// gives 204 when done - if it errors here i dont care
-			try {
-				await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
-			} catch(ignore) {}
+			await xhrPromise(`https://api.github.com/repos/${mos.login}/Trigger-Community`, { method:'DELETE', headers:{ Accept:'application/vnd.github.v3+json', Authorization:'token ' + mos.access_token } });
 
 			/////// ok pull request creation complete - update store and storage
 			// the reducer will update storage
 			dispatch(editHotkey(hotkey_withnewcommand, command.filename));
 
-			if (confirm(browser.i18n.getMessage('github_shared_success')))
-				callInBackground('addTab', prurl);
+            if (newcommand.filename != command.filename) {
+                if (hotkey.enabled) {
+                    // because filename changed, i need to update exe
+                    callInExe('removeHotkey', { // will overwrite the old one
+                        combo: hotkey.combo,
+                        filename: command.filename
+                    });
+                    callInExe('addHotkey', {
+                        combo: hotkey.combo,
+                        filename: newcommand.filename
+                    });
+                }
+            }
+
+            this.modModalData({ progress:'SHARED', progress_data:prurl });
 		} catch(ex) {
-			console['error'](browser.i18n.getMessage('github_shared_fail', [ex]));
-			alert(browser.i18n.getMessage('github_shared_fail', [ex]))
+			console['error'](browser.i18n.getMessage('github_shared_fail', [ex.toString()]));
+			// alert(browser.i18n.getMessage('github_shared_fail', [ex]));
+            let progress_failed = store.getState().pages_state[ReactRouter.browserHistory.getCurrentLocation().pathname].modal.data.progress; // the progress it was working before failure. so the progress step it failed on.
+            console.log('progress_failed:', progress_failed);
+            this.modModalData({ progress:'SHARE_ERROR', progress_data: {
+                ex: ex,
+                progress_failed
+            }});
 		}
 	},
 	onCancel(e) {
@@ -1601,52 +1647,260 @@ var ModalContentShareCommand = ReactRedux.connect(
 		// let { closeModal, modal:{data:{onConfirm}} } = this.props;
 		// closeModal();
         // onConfirm(undefined, true);
-        this.share();
+
+        let txtarea = ReactDOM.findDOMNode(this).querySelector('textarea');
+        let value = txtarea.value.trim();
+        if (value.length < 3) {
+            this.modModalData({ progress:'AWAITING_INPUT_ERROR_CHARS' });
+            setTimeout(()=>txtarea.focus(), 0);
+        } else {
+            this.share();
+        }
 	},
-	switchDiff(e) {
-		if (!stopClickAndCheck0(e)) return;
-
-		let { modal:oldmodal } = this.props;
-		let modal = { ...oldmodal };
-		let compare_base = oldmodal.data.compare_base == 'remote' ? 'user' : 'remote';
-		modal.data = { ...oldmodal.data, compare_base };
-
-		store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
-
-	},
+    modModalData(newdata) {
+        // newdata - object
+        let { modal:oldmodal } = this.props;
+        let modal = {
+            ...oldmodal,
+            data: {
+                ...oldmodal.data,
+                ...newdata
+            }
+        };
+        store.dispatch(modPageState(ReactRouter.browserHistory.getCurrentLocation().pathname, { modal }));
+    },
+    refTxtarea(domel) {
+        if (domel) setTimeout(()=>domel.focus(), 0);
+    },
+    txtareaChange(e) {
+        this.modModalData({ progress:undefined });
+    },
+    onAuthNow() {
+        callInBackground('openAuthTab', { serviceid:'github' });
+    },
 	render() {
-		let { modal } = this.props;
+		let { modal, mos } = this.props;
 		let { data } = modal;
 
-        let { progress } = data;
         // progress - undefined/string;enum[] - text to show on upload progress of share. is undefined when have not yet clicked "Yes, Share Now"
+        // enum progress:
+        const AWAITING_INPUT = 'AWAITING_INPUT';
+        const AWAITING_INPUT_ERROR_CHARS = 'AWAITING_INPUT_ERROR_CHARS';
+        const SHARING_DELETING_FORK_ST = 'SHARING_DELETING_FORK_ST';
+        const SHARE_ERROR = 'SHARE_ERROR';
+        const SHARED = 'SHARED';
 
-		return React.createElement('div', { className:'modal-content' },
-			React.createElement('div', { className:'modal-header' },
-				!progress && React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
-					React.createElement('span', { 'aria-hidden':'true'}, '×'),
-					React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
-				),
-				React.createElement('h4', { className:'modal-title' }, 'Share Command?'),
-			),
-			React.createElement('div', { className:'modal-body' },
-				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_firstline')),
-				React.createElement('br'),
-				React.createElement('p', undefined, browser.i18n.getMessage(`modal_msg_${grade}_midline`)),
-				React.createElement('br'),
-				React.createElement('p', undefined, browser.i18n.getMessage('modal_msg_grade_lastline')),
-				React.createElement('br'),
-				React.createElement('button', { className:'diff-switch-btn btn btn-default btn-xs pull-right', onClick:this.switchDiff },
-					React.createElement('span', { className:'glyphicon glyphicon-sort' }),
-					' ' + diff_switch_label
-				),
-				React.createElement('div', { className:'diff', dangerouslySetInnerHTML:diff_html })
-			),
-			React.createElement('div', { className:'modal-footer' },
-				!progress && React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, 'No, Not Now'),
-				React.createElement('button', { className:'btn btn-primary', onClick:this.onOk, disabled:progress }, 'Yes, Share Now')
-			)
-		);
+        let { progress=AWAITING_INPUT, hotkey } = data;
+
+        let sharelabel;
+        switch (progress) {
+            case AWAITING_INPUT:
+            case AWAITING_INPUT_ERROR_CHARS:
+                    sharelabel = 'Share';
+                break;
+            case SHARE_ERROR:
+                    sharelabel = 'Try Sharing Again';
+                break;
+            case progress.startsWith('SHARING_') && progress:
+                    sharelabel = 'Sharing...';
+                break;
+        }
+
+        let share_disable;
+        switch (progress) {
+            case progress.startsWith('SHARING_') && progress:
+                    share_disable = true;
+                break;
+        }
+
+        let share_showicon;
+        switch (progress) {
+            case progress.startsWith('SHARING_') && progress:
+                    share_showicon = true;
+                break;
+        }
+
+        let shouldshowclose;
+        switch (progress) {
+            case AWAITING_INPUT:
+            case AWAITING_INPUT_ERROR_CHARS:
+            case SHARE_ERROR:
+                    shouldshowclose = true;
+                break;
+            case progress.startsWith('SHARING_') && progress:
+                    shouldshowclose = false;
+                break;
+        }
+
+        let helpblock;
+        switch (progress) {
+            case AWAITING_INPUT_ERROR_CHARS:
+                    helpblock = 'Message must be at least three chracters';
+                break;
+        }
+
+        let txtarea_disabled;
+        switch (progress) {
+            case progress.startsWith('SHARING_') && progress:
+                    txtarea_disabled = true;
+                break;
+        }
+
+        let txtareaChange;
+        switch (progress) {
+            case AWAITING_INPUT_ERROR_CHARS:
+                    txtareaChange = this.txtareaChange;
+                break;
+        }
+
+        let form_class;
+        switch (progress) {
+            case AWAITING_INPUT_ERROR_CHARS:
+                    form_class = 'has-feedback has-error';
+                break;
+        }
+
+        let statusmsg;
+        switch (progress) {
+            case progress.startsWith('SHARING_') && progress:
+                    statusmsg = progress;
+                break;
+            case 'SHARE_ERROR':
+                    let { progress_failed, ex } = data.progress_data;
+                    statusmsg = [ 'Failed sharing at step ' + progress_failed + '.' ];
+                    if (typeof(ex) == 'string') {
+                        statusmsg.push(' ' + ex);
+                    } else if (ex && typeof(ex) == 'object' && ex.reason == 'UNHANDLED_SERVER_RESPONSE') {
+                        // browser.i18n.getMessage('github_shared_fail', [ex.toString()])
+                        let { url, reason:xhrreason, status, response } = ex.xhr;
+                        statusmsg.push(
+                            React.createElement('dl', undefined,
+                                React.createElement('dt', undefined,
+                        			React.createElement('dd', undefined,
+                        				browser.i18n.getMessage('url:') + ' ' + url
+                        			),
+                        			React.createElement('dd', undefined,
+                        				browser.i18n.getMessage('status:') + ' ' + status
+                        			),
+                        			React.createElement('dd', undefined,
+                        				browser.i18n.getMessage('load_reason:') + ' ' + xhrreason
+                        			),
+                        			React.createElement('dd', undefined,
+                        				browser.i18n.getMessage('response:') + ' ',
+                        				React.createElement('pre', undefined, response)
+                        			)
+                        		)
+                        	)
+                        );
+                    } else {
+                        statusmsg.push(' ' + ex.toString());
+                    }
+                break;
+        }
+
+        let statuspercent;
+        switch (progress) {
+            case progress.startsWith('SHARING_') && progress:
+                    let steppercents = {
+                        SHARING_DELETING_FORK_ST: 1,
+                        SHARING_FORKING: 2,
+                        SHARING_CHECKING_FORK_DONE: 3,
+                        SHARING_WAITING_FORK_DONE: 3,
+
+                        SHARING_NEW_GENERATING_FILENAME: 4,
+                        SHARING_NEW_UPLOADING_FILE: 5,
+                        SHARING_UPDATE_FETCHING_SHA: 4,
+                        SHARING_UPDATE_UPLOADING_FILE: 5,
+
+                        SHARING_CREATING_DISCUSS_TOPIC: 6,
+                        SHARING_DELETING_FORK_END: 7
+                    };
+                    statuspercent = Math.round(steppercents[progress] / 7 * 100);
+                break;
+        }
+
+        let sharebtncolor = progress == 'SHARE_ERROR' ? 'danger' : 'primary';
+
+        if (mos) {
+            if (progress == SHARED) {
+                return React.createElement('div', { className:'modal-content' },
+                    React.createElement('div', { className:'modal-header' },
+                        React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+                            React.createElement('span', { 'aria-hidden':'true'}, '×'),
+                            React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+                        ),
+                        React.createElement('h4', { className:'modal-title' }, 'Share Command'),
+                    ),
+                    React.createElement('div', { className:'modal-body' },
+                        React.createElement('p', undefined,
+                            messageDownReactMarkup(`Succesfully shared <B>${hotkey.command.content.locales[gExtLocale].name}</B>. It is now pending review and approval. `),
+                            React.createElement('a', {href:data.progress_data, target:'_blank'}, 'Click here to open approval topic in new tab.')
+                        )
+                    ),
+                    React.createElement('div', { className:'modal-footer' },
+                        React.createElement('button', { className:'btn btn-default status-nobtn', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('close'))
+                    )
+                );
+            } else {
+                return React.createElement('div', { className:'modal-content' },
+                    React.createElement('div', { className:'modal-header' },
+                        shouldshowclose && React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+                            React.createElement('span', { 'aria-hidden':'true'}, '×'),
+                            React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+                        ),
+                        React.createElement('h4', { className:'modal-title' }, 'Share Command'),
+                    ),
+                    React.createElement('div', { className:'modal-body' },
+                        statusmsg && React.createElement('div', { className:'alert alert-' + (progress == SHARE_ERROR ? 'danger' : 'info'), style:{marginBottom:'10px'} },
+                            progress == SHARE_ERROR && React.createElement('b', undefined, browser.i18n.getMessage('error_upper') + ' '),
+                            ...statusmsg
+                        ),
+                        React.createElement('form', { className:form_class },
+                            React.createElement('div', { class:'form-group', style:{marginBottom:'10px', opacity:(txtarea_disabled ? 0.5 : undefined)} },
+                                React.createElement('b', { style:{marginRight:'10px'} }, 'Command'),
+                                hotkey.command.content.locales[gExtLocale].name
+                            ),
+                            React.createElement('div', { className:'form-group', style:{marginBottom:0} },
+                                React.createElement('label', { style:(txtarea_disabled ? {opacity:0.5} : undefined) }, 'Type a message explaining your changes'),
+                                React.createElement('textarea', { className:'form-control', disabled:txtarea_disabled, style:{resize:'none'}, rows:3, ref:this.refTxtarea, onChange:txtareaChange }),
+                                helpblock && React.createElement('span', { className:'help-block', style:{marginBottom:0} }, helpblock)
+                            )
+                        )
+                    ),
+                    React.createElement('div', { className:'modal-footer' },
+                        statuspercent !== undefined && React.createElement('button', { className:'btn btn-link pull-left status-nobtn' },
+                            React.createElement('div', { className:'progress', style:{width:'200px', marginBottom:'0'} },
+                                React.createElement('div', { className:'progress-bar progress-bar-striped active', style:{width:statuspercent + '%'} },
+                                    React.createElement('span', { className:'sr-only' }, statuspercent + '% Complete')
+                                ),
+                            ),
+                        ),
+                        shouldshowclose && React.createElement('button', { className:'btn btn-default status-nobtn', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('cancel')),
+                        React.createElement('button', { className:'btn btn-' + sharebtncolor, onClick:this.onOk, disabled:share_disable },
+                            share_showicon && React.createElement('span', { className:'glyphicon glyphicon-refresh spinning' }),
+                            (share_showicon ? ' ' : '') + sharelabel
+                        )
+                    )
+                );
+            }
+        } else {
+            return React.createElement('div', { className:'modal-content' },
+                React.createElement('div', { className:'modal-header' },
+                    React.createElement('button', { className:'close', type:'button', 'data-dismiss':'modal', onClick:this.onCancel },
+                        React.createElement('span', { 'aria-hidden':'true'}, '×'),
+                        React.createElement('span', { className:'sr-only'}, browser.i18n.getMessage('close')),
+                    ),
+                    React.createElement('h4', { className:'modal-title' }, 'Allow Github Sharing?'),
+                ),
+                React.createElement('div', { className:'modal-body' },
+                    React.createElement('p', undefined, `Github powers the community due to it's excellent version control. In order to share your commands, you must grant permission to your Github account.`)
+                ),
+                React.createElement('div', { className:'modal-footer' },
+                    React.createElement('button', { className:'btn btn-default', 'data-dismiss':'modal', onClick:this.onCancel }, browser.i18n.getMessage('cancel')),
+                    React.createElement('button', { className:'btn btn-primary', onClick:this.onAuthNow }, 'Yes, Allow My Account')
+                )
+            );
+        }
 	}
 }));
 

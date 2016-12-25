@@ -125,9 +125,10 @@
     "message_startrans": { "message":"Establishing connection with transcaction and Paypal servers..." },
     "title_failtrans": { "message":"Transaction Failed" },
     "message_failtrans": { "message":"Failed to connect to transaction servers." },
-    "load_reason": { "message":"Load Reason:" },
-    "status": { "message":"Status:" },
-    "response": { "message":"Response:" },
+    "load_reason:": { "message":"Load Reason:" },
+    "status:": { "message":"Status:" },
+    "response:": { "message":"Response:" },
+    "url:": { "message":"URL:" },
 
     "title_entercode": { "message":"Enable Hotkeys" },
     "dismiss_entercode": { "message":"Cancel" },
@@ -160,6 +161,7 @@
 	"okay": { "message": "Okay" },
 	"cancel": { "message": "Cancel" },
 	"error": { "message": "Error" },
+	"error_upper": { "message": "ERROR" },
 
 	"loading_community": { "message": "Loading community from Github..." },
 
