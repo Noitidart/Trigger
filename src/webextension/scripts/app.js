@@ -2365,7 +2365,7 @@ const SaveCommandBtn = ReactRedux.connect(
             let beautified_newcode = await callIn('Bootstrap', 'beautifyText', { js:newcommand.content.code.exec });
             let beautified_oldcode = await callIn('Bootstrap', 'beautifyText', { js:command.content.code.exec });
 
-			if (beautified_newcode != beautified_oldcode && JSON.stringify(newcommand.content) != JSON.stringify(command.content)) {
+			if (beautified_newcode != beautified_oldcode || JSON.stringify(newcommand.content) != JSON.stringify(command.content)) {
 				isreallyedited = true;
 
 				// is there a gitfile? if so then set the git properies of `base_file_sha` and `changes_since_base`
