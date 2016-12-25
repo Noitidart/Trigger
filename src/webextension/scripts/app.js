@@ -2182,13 +2182,6 @@ const PageCommandForm = ReactRedux.connect(
 
         let iseditpage = pathname.toLowerCase().startsWith('/edit');
 
-        if (iseditpage && !hotkey) {
-            // if no hotkey, but is edit page then this means the hotkey was removed link87777112
-            // i dont know why `validateForm` triggers after i trash a hotkey in a tab and then focus edit page while that hotkey command was in edit // TODO: figure this out
-            dispatch(modPageState(pathname, { isvalid:false })); // modPageState does the difference check, if nothing in namevalues is changed it doesnt update
-            return;
-        }
-
 		let isvalid = true; // new
 
 		// test to set isvalid false if soemthing blank
@@ -2237,7 +2230,10 @@ const PageCommandForm = ReactRedux.connect(
 		document.getElementById('code').value = hotkey.command.content.code.exec;
 	},
     componentDidUpdate() {
-        if (this.should_revalidate) this.validateForm();
+        if (this.should_revalidate) {
+            this.should_revalidate = false;
+            this.validateForm();
+        }
     },
     componentWillUpdate(nextProps) {
         let { hotkey } = nextProps; // mapped state
