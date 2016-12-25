@@ -1222,7 +1222,7 @@ const Header = React.createClass({
 
 		// localize it and wrap it <small>
 		crumbs.forEach( (crumb, i, arr) =>
-			arr[i] = React.createElement( 'small', { style:{whiteSpace:'no-wrap'} }, (browser.i18n.getMessage('crumb_' + crumb) || crumb) )
+			arr[i] = React.createElement( 'small', { style:{whiteSpace:'no-wrap'} }, (browser.i18n.getMessage('crumb_' + crumb) || crumb) ) // if change from `small` then update link72188
 		);
 
 		if (crumbs.length > 1)
@@ -1232,7 +1232,7 @@ const Header = React.createClass({
 			React.createElement('div', { className:'col-lg-12' },
 				React.createElement('h1', { className:'page-header' },
                     browser.i18n.getMessage('addon_name') + ' ',
-                    ...crumbs
+                    ...crumbs // if a crumb isnt the last element update querySelector in link72188
                 )
 			)
 		);
@@ -2227,6 +2227,34 @@ const PageCommandForm = ReactRedux.connect(
 
 		document.getElementById('code').value = hotkey.command.content.code.exec;
 	},
+    componentDidUpdate() {
+        if (this.should_revalidate) this.validateForm();
+    },
+    componentWillUpdate(nextProps) {
+        let { hotkey } = nextProps; // mapped state
+        let iseditpage = !!hotkey;
+        if (iseditpage) {
+            let { group, locales:{[gExtLocale]:{ name,description }}, code:{ exec:code } } = hotkey.command.content;
+            let nextvalues = { group, name, description, code };
+            let domvalues = getFormValues(['name', 'description', 'code', 'group']);
+            let didupdatefield = false;
+            for (let [domid, domval] of Object.entries(domvalues)) {
+                let nextval = nextvalues[domid];
+                if (domval !== nextval) {
+                    console.log(domid, 'changed!', 'was:', domval, 'now:', nextval);
+                    document.getElementById(domid).value = nextval;
+                    didupdatefield = true;
+                    if (domid == 'name') {
+                        // update header
+                        let last_crumb = document.querySelector('.page-header small:last-of-type'); // link72188
+                        let oldval = this.props.hotkey.command.content.locales[gExtLocale].name;
+                        last_crumb.textContent = last_crumb.textContent.replace(oldval, nextval);
+                    }
+                }
+            }
+            if (didupdatefield) this.should_revalidate = true;
+        }
+    },
 	render() {
 		let { hotkey, isvalid } = this.props; // mapped state
 		// hotkey is undefined, unless `iseditpage` is true
