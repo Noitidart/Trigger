@@ -48,17 +48,7 @@ var nub = {
 		pref_hotkeys: [],
         pref_serials: {} // {serial:qty} // added only if valid, but users can be bad and add stuff here, which will allow gui enabling more then allowed, but the exe will not enable more
 	},
-	oauth: { // config
-		github: {
-			client_id: '588171458d360bdb2497',
-			client_secret: '8d877cf13e5647f93ad42c28436e33e29aa8aa9b',
-			redirect_uri: 'http://127.0.0.1/trigger_github',
-			scope: 'user repo delete_repo',
-			dotname: 'login', // `dotid` and `dotname` are dot paths in the `mem_oauth` entry. `dotid` is meant to point to something that uniquely identifies that account across all accounts on that oauth service's web server
-			dotid: 'id'
-		}
-	},
-    data: {
+	data: {
         min_enable_count: 3
     }
 };
