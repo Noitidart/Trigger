@@ -140,7 +140,10 @@ async function focusAppPage() {
                 data: 'hydrant.stg.pref_serials',
                 store: 'serials'
             },
-            isDiff: (cserials, nserials) => doesAnyTestPass(cserials, nserials, {'.':[SHCMP]})
+            isDiff: (cserials, nserials) => {
+                if (nserials === undefined) return false;
+                return doesAnyTestPass(cserials, nserials, {'.':[SHCMP]});
+            }
         },
         {
             name: 'oauth',
@@ -148,7 +151,10 @@ async function focusAppPage() {
                 data: 'hydrant.stg.mem_oauth',
                 store: 'oauth'
             },
-            isDiff: (coauth, noauth) => doesAnyTestPass(coauth, noauth, {'github':[SHCMP]})
+            isDiff: (coauth, noauth) => {
+                if (noauth === undefined) return false;
+                return doesAnyTestPass(coauth, noauth, {'github':[SHCMP]});
+            }
         },
         {
             name: 'hotkeys',
@@ -157,6 +163,7 @@ async function focusAppPage() {
                 store: 'hotkeys'
             },
             isDiff(chotkeys, nhotkeys) {
+                if (nhotkeys === undefined) return false;
                 // chotkeys is array of objects
                 if (chotkeys.length != nhotkeys.length) return true;
 
@@ -192,6 +199,7 @@ async function focusAppPage() {
         let cur = deepAccessUsingString(state, dotpath.store);
         let next = deepAccessUsingString(data, dotpath.data);
         // console.log('dotpath.data:', dotpath.data, 'next:', next, 'data:', data);
+
         if (isDiff(cur, next)) {
             console.log(`${name} is changed! was:`, cur, 'now:', next);
             newmainkeys[dotpath.store] = next;
@@ -1587,7 +1595,7 @@ var ModalContentShareCommand = ReactRedux.connect(
 			// step 3 - create/update file
 			let prtitle;
 
-			for (let goto=0; goto<1; goto++) {
+			for (let go2=0; go2<1; go2++) {
 				if (filename.startsWith('_')) {
 				// if (pref_hotkey.file_sha) 'No changes made! actually it can be new one created' THAT's why i prefix with `_` instead of `if (!pref_hotkey.base_file_sha && !pref_hotkey.file_sha)` // NOTE:
 					// never shared yet
@@ -1664,7 +1672,7 @@ var ModalContentShareCommand = ReactRedux.connect(
 						// so repeat step 3 but as "brand new local going to"
 						prtitle = 'Add new command again - initial PR was not yet accepted';
 						filename = '_' + filename;
-						goto--; // goto = -1;
+						go2--; // go2 = -1;
 						continue;
 					}
 					if (xpsha.xhr.status !== 200) throwUnhandledResponse(xpsha); // throw 'Failed to do step "Pull Request Step 3b.1 - Get "${filename}" File SHA and Compare Master Contents"';
@@ -2914,6 +2922,10 @@ const RemoteCommand = ReactRedux.connect(
 	}
 )(React.createClass({
 	displayName: 'RemoteCommand',
+    showVersions(e) {
+        if (!stopClickAndCheck0(e)) return;
+        alert('Versions view not yet implemented.');
+    },
 	render() {
 		let { remotecommand } = this.props;
 		let { _installs:installs, _versions:versions, filename, content:{locales:{[gExtLocale]:{name, description}}} } = remotecommand;
@@ -2952,7 +2964,7 @@ const RemoteCommand = ReactRedux.connect(
 				React.createElement('p', undefined,
 					React.createElement(InstallBtn, { remotecommand }),
 					' ',
-					React.createElement('a', { href:'#', className:'btn btn-default' },
+					React.createElement('a', { href:'#', className:'btn btn-default', onClick:this.showVersions },
 						React.createElement('span', { className:'glyphicon glyphicon-dashboard' }),
 						' ', browser.i18n.getMessage('versions')
 					)

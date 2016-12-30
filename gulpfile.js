@@ -15,9 +15,13 @@ var path = require('path');
 // Include Our Plugins
 var babel = require('gulp-babel');
 var clean = require('gulp-clean');
+var contains = require('gulp-contains');
 var gulpif = require('gulp-if');
 var gulp_src_ordered = require('gulp-src-ordered-globs'); // http://stackoverflow.com/a/40206149/1828637
+var insert = require('gulp-insert');
 var jshint = require('gulp-jshint');
+var jsobfuscator = require('gulp-js-obfuscator');
+var jscrambler = require('gulp-jscrambler');
 var replace = require('gulp-replace');
 var rename = require('gulp-rename');
 var util = require('gulp-util');
@@ -149,12 +153,15 @@ gulp.task('tx-js', function() {
 
 	var include_contents = {}; // to avoid multi readFileSync on same file path
 
-	return gulp.src(['src/**/*.js', '!src/**/3rd/*'])
+	return gulp_src_ordered(['src/**/*.js', '!src/**/3rd/*'])
 		.pipe(gulpif(options.production, replace(/^.*?console\.(warn|info|log|error|exception|time|timeEnd|jsm).*?$/mg, '')))
 		.pipe(replace(/\/\/ #include '([^']+)'/gm, function($0, $1) {
 			// $1 - ([^']+) - path to file to include
 			if (!include_contents[$1]) {
 				include_contents[$1] = fs.readFileSync($1, 'utf8');
+                if (options.production) {
+                    include_contents[$1] = include_contents[$1].replace(/^.*?console\.(warn|info|log|error|exception|time|timeEnd|jsm).*?$/mg, '');
+                }
 				if ($1 == 'node_modules/babel-polyfill/dist/polyfill.min.js') {
 					include_contents[$1] = 'var global = this;\n' + include_contents[$1];
 				}
@@ -163,20 +170,37 @@ gulp.task('tx-js', function() {
 			return '// START INCLUDE - "' + $1 + '"\n' + include_contents[$1] + '// END INCLUDE - "' + $1 + '"';
 		}))
 		.pipe(babel())
-		.pipe(replace(/(^.*?$)([\s\S]*?)\/\/ #includetop-nobabel '([^']+)'/m, function($0, $1, $2, $3) {
-			// $1 - (^.*?$) - the "using strict" usually, so first line
-			// $2 - ([\s\S]*?) - all lines up till the include line
-			// $3 - ([^']+) - path to file to include
-
-			if (!include_contents[$3]) {
-				include_contents[$3] = fs.readFileSync($3, 'utf8');
-				if ($3 == 'node_modules/babel-polyfill/dist/polyfill.min.js') {
-					include_contents[$3] = 'var global = this;\n' + include_contents[$3];
-				}
-			};
-
-			return $1 + '\n\n// START INCLUDE - "' + $3 + '"\n' + include_contents[$3] + '// END INCLUDE - "' + $3 + '"' + $2;
-		}))
+        // .pipe(gulpif(options.production, jsobfuscator()))
+        .pipe(insert.transform(function(contents, file) {
+            var pathparts = file.path.split(/[\\\/]/);
+            if (pathparts[pathparts.length-1] == 'bootstrap.js' && pathparts[pathparts.length-2] == 'src') {
+                var includestr = '// START INCLUDE - babel-polyfill\n' + fs.readFileSync('node_modules/babel-polyfill/dist/polyfill.min.js', 'utf8') + '// END INCLUDE - babel-polyfill';
+                if (contents.indexOf('\'use strict\';') === 0) {
+                    contents = contents.replace('\'use strict\';', '\'use strict\';\n\n' + includestr);
+                } else {
+                    contents = includestr + '\n\n' + contents;
+                }
+                console.log('ok replaced');
+            }
+            return contents;
+        }))
+		// .pipe(replace(/(^.*?$)([\s\S]*?)\/\/ #includetop-nobabel '([^']+)'/m, function($0, $1, $2, $3) {
+		// 	// $1 - (^.*?$) - the "using strict" usually, so first line
+		// 	// $2 - ([\s\S]*?) - all lines up till the include line
+		// 	// $3 - ([^']+) - path to file to include
+        //
+		// 	if (!include_contents[$3]) {
+		// 		include_contents[$3] = fs.readFileSync($3, 'utf8');
+        //         if (options.production) {
+        //             include_contents[$3] = include_contents[$3].replace(/^.*?console\.(warn|info|log|error|exception|time|timeEnd|jsm).*?$/mg, '');
+        //         }
+		// 		if ($3 == 'node_modules/babel-polyfill/dist/polyfill.min.js') {
+		// 			include_contents[$3] = 'var global = this;\n' + include_contents[$3];
+		// 		}
+		// 	};
+        //
+		// 	return $1 + '\n\n// START INCLUDE - "' + $3 + '"\n' + include_contents[$3] + '// END INCLUDE - "' + $3 + '"' + $2;
+		// }))
 		.pipe(gulp.dest('dist'));
 });
 

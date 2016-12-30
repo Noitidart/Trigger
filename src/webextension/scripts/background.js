@@ -485,9 +485,6 @@ async function removeSerial(serial) {
     delete newserials[serial];
     await storageCall('local', 'set', { pref_serials:newserials });
 }
-function calcHash({msg, key, base64}) {
-    return CryptoJS.HmacSHA1(msg, key).toString(base64 ? CryptoJS.enc.Base64 : undefined);
-}
 
 function triggerCommand(aArg) {
 	let filename = aArg;
