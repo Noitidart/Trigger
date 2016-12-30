@@ -17,7 +17,14 @@ let nub = { // link39181
 switch (OS.Constants.Sys.Name) {
 	case 'Android':
 
-			importScripts('chrome://trigger/content/webextension/scripts/3rd/jni-worker.jsm');
+            // make JNI.jsm safe for workers by removing the Components parts
+            let req = new XMLHttpRequest();
+            req.open('GET', 'resource://gre/modules/JNI.jsm', false); // 3rd arg is false for synchronus
+            req.send();
+            let jnijsm = req.response.replace('var EXPOR', '// var EXPOR').replace('Components.utils.import(', '// Components.utils.import(');
+
+            // importScripts('chrome://trigger/content/webextension/scripts/3rd/jni-worker.jsm');
+            importScripts('data:text/plain,' + jnijsm);
 			jenv = JNI.GetForThread();
 
 		break;
