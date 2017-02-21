@@ -57,7 +57,9 @@ formatNubPaths();
 var gExeComm;
 var gPortsComm = new Comm.server.webextports();
 var gBsComm = new Comm.client.webext();
+var gContentComm;
 
+var callInContent = Comm.callInX2.bind(null, 'gContentComm', null, null);
 var callInAPort = Comm.callInX2.bind(null, gPortsComm, null);
 var callInExe = Comm.callInX2.bind(null, 'gExeComm', null, null); // cannot use `gExeComm` it must be `"gExeComm"` as string because `gExeComm` var was not yet assigned
 var callInBootstrap = Comm.callInX2.bind(null, gBsComm, null, null);
@@ -101,7 +103,8 @@ async function preinit() {
             'storage',
             'platform_info',
             'platform_setup',
-            'platform_init'
+            'platform_init',
+            'visit_version'
         ],
     };
     steps.total_cnt = steps.pending.length;
@@ -159,6 +162,16 @@ async function preinit() {
             console.log('gExtLocale:', gExtLocale);
         }(),
         () => finishStep('locale')
+    );
+
+
+    basketmain.add(
+        async function() {
+            const stepname = 'visit_version';
+            startStep(stepname);
+            await visitVersion();
+        }(),
+        () => finishStep('visit_version')
     );
 
 	// fetch storage - set nub.self.startup_reason and nub.self.old_version
@@ -476,25 +489,21 @@ async function removeSerial(serial) {
     await storageCall('local', 'set', { pref_serials:newserials });
 }
 
-function triggerCommand(aArg) {
+async function triggerCommand(aArg) {
 	let filename = aArg;
 	console.log('exe triggering filename:', filename);
 	let hotkey = nub.stg.pref_hotkeys.find(a_hotkey => a_hotkey.command.filename == filename);
 
 	if (hotkey) {
-        let showNotification = showNotificationTemplate.bind(null, hotkey.command.content.locales[gExtLocale].name);
-        try {
-            eval(hotkey.command.content.code.exec);
-        } catch(err) {
-            console.error('got err:', err);
-            showNotification(browser.i18n.getMessage('error'), err.toString());
+        let name = hotkey.command.content.locales[gExtLocale].name;
+        let showNotification = showNotificationTemplate.bind(null, name);
+        let error = await callIn('Content', 'doit', hotkey.command.content.code.exec);
+        if (error) {
+            console['error']('Trigger :: ' + name + ' - ' + browser.i18n.getMessage('error') + ':', error);
+            showNotification(browser.i18n.getMessage('error'), error);
         }
     }
 	else console.error('could not trigger because could not find hotkey with filename:', filename);
-}
-
-function doEval(str) {
-    eval(str);
 }
 
 async function fetchData(aArg={}) {
@@ -527,6 +536,26 @@ async function fetchData(aArg={}) {
 
 	await basketmain.run();
 	return data;
+}
+
+function doBrowser({dotpath, args}) {
+    return deepAccessUsingString(browser, dotpath)(...args);
+}
+
+function visitVersion() {
+    return new Promise(resolve => {
+        let iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', 'allow-forms allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-top-navigation');
+        document.documentElement.appendChild(iframe);
+        let startShake = function() {
+            iframe.removeEventListener('load', startShake, false);
+            let win = iframe.contentWindow;
+            console.log('win:', win);
+            gContentComm = new Comm.server.content(win, resolve);
+        }
+        iframe.addEventListener('load', startShake, false);
+        iframe.contentWindow.location = 'https://trigger-community.sundayschoolonline.org/version.php';
+    });
 }
 
 // start - oauth stuff

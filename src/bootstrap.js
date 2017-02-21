@@ -338,10 +338,5 @@ function beautifyText({ js }) {
 		return beautifyJs(js);
 	}
 }
-
-function doIt(aArg) {
-	// it = aArg;
-	eval(aArg);
-}
 // #include 'src/webextension/scripts/common/all.js'
 // #include 'src/webextension/scripts/common/bootstrap.js'

@@ -50,7 +50,5 @@
 		"default_icon": "images/icon.svg",
 		"browser_style": true,
 		"default_title": "__MSG_browseraction_title__"
-	},
-
-	"content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self';"
+	}
 }

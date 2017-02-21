@@ -67,13 +67,13 @@ var isSemVer = (function(){
     // Get the comparison value for the base version.
     base_ver = get_val( base_ver );
 
-    // Iterate over all additional function arguments.
-    for ( var arg, i = 1; arg = arguments[ i++ ]; ) {
-      // If any comparison fails, exit immediately with a false value.
-      if ( !(new Function( 'return ' + base_ver + get_val( arg, 1 ) ))() ) {
-        return false;
-      }
-    }
+    // // Iterate over all additional function arguments.
+    // for ( var arg, i = 1; arg = arguments[ i++ ]; ) {
+    //   // If any comparison fails, exit immediately with a false value.
+    //   if ( !(new Function( 'return ' + base_ver + get_val( arg, 1 ) ))() ) {
+    //     return false;
+    //   }
+    // }
 
     // All comparisons passed, return true!
     return true;
