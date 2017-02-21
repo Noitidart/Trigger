@@ -174,13 +174,13 @@ gulp.task('tx-js', function() {
         .pipe(insert.transform(function(contents, file) {
             var pathparts = file.path.split(/[\\\/]/);
             if (pathparts[pathparts.length-1] == 'bootstrap.js' && pathparts[pathparts.length-2] == 'src') {
-                var includestr = '// START INCLUDE - babel-polyfill\n' + fs.readFileSync('node_modules/babel-polyfill/dist/polyfill.min.js', 'utf8') + '// END INCLUDE - babel-polyfill';
+                var includestr = '// START INCLUDE - babel-polyfill\nvar global = this;\n' + fs.readFileSync('node_modules/babel-polyfill/dist/polyfill.min.js', 'utf8') + '// END INCLUDE - babel-polyfill';
                 if (contents.indexOf('\'use strict\';') === 0) {
                     contents = contents.replace('\'use strict\';', '\'use strict\';\n\n' + includestr);
                 } else {
                     contents = includestr + '\n\n' + contents;
                 }
-                console.log('ok replaced');
+                console.log('ok included babel-polyfill at top');
             }
             return contents;
         }))

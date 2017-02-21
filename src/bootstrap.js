@@ -18,8 +18,6 @@ var callInBackground;
 var callInExe;
 var callInMainworker;
 
-// Object.defineProperty(global, 'it', { get: a => null, set: ({a,b})=>global[a](b) });
-
 function install() {}
 function uninstall(aData, aReason) {
     if (WEBEXT_OS != 'android' && aReason == ADDON_UNINSTALL) {
