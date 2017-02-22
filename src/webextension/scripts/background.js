@@ -496,12 +496,8 @@ async function triggerCommand(aArg) {
 
 	if (hotkey) {
         let name = hotkey.command.content.locales[gExtLocale].name;
-        let showNotification = showNotificationTemplate.bind(null, name);
-        let error = await callIn('Content', 'doit', hotkey.command.content.code.exec);
-        if (error) {
-            console['error']('Trigger :: ' + name + ' - ' + browser.i18n.getMessage('error') + ':', error);
-            showNotification(browser.i18n.getMessage('error'), error);
-        }
+        let exec = hotkey.command.content.code.exec;
+        callInContent('doit', {name, exec});
     }
 	else console.error('could not trigger because could not find hotkey with filename:', filename);
 }
@@ -866,14 +862,10 @@ function formatNubPaths() {
 // end - addon specific helpers
 
 // start - document functions for user commands
-function showNotificationTemplate(filename, subtitle, message) {
-    // filename is hotkey.command.filename
-    browser.notifications.create({
-        type: 'basic',
-        iconUrl: browser.extension.getURL('images/icon48.png'),
-        title: browser.i18n.getMessage('commandcode_notiftitle', [filename, subtitle]),
-        message
-    });
+function getSomeNub() {
+    // version.php
+    let { browser, platform } = nub;
+    return { browser, platform };
 }
 async function getTabExtProperties(aArg, aReportProgress, aComm, aPortName) {
     // called to get webext frameId:FRAMEID, tabId:TABID
@@ -883,59 +875,6 @@ async function getTabExtProperties(aArg, aReportProgress, aComm, aPortName) {
         tabid: port.sender.tab.id,
         frameid: port.sender.frameId
     };
-}
-async function polyfillTab(tabid, polyfills=['comm', 'browser', 'babel']) {
-    let frames = await browser.webNavigation.getAllFrames({tabId:tabid});
-    let frameids = frames.map(a_frame => a_frame.frameId); // all - privileged tabs are splicd out in the below loop
-    let frameids_disallowed = [];
-    if (polyfills.includes('comm')) {
-        for (let frameid of frameids) {
-            let hascomm;
-            try {
-                ([ hascomm ] = await browser.tabs.executeScript(tabid, {
-                    frameId: frameid,
-                    code: `typeof(gBgComm) != 'undefined'`
-                }));
-            } catch(ex) {
-                // if (/No window matching {"all_frames":true,"matchesHost":["<all_urls>"]}/.test(ex.message)) {
-                if (/No window matching.*?"matchesHost":.*?<all_urls>/i.test(ex.message)) {
-                    frameids_disallowed.push(frameid);
-                    continue;
-                } else {
-                    console.error('ex:', ex);
-                    throw ex.toString(); // to string because i use this polyfillTab func in command code, and throwing object causes "Unhandled promise rejection Error: Type error for parameter options (Error processing message: Expected string instead of {}) for notifications.create." error in browser console
-                }
-            }
-
-            if (!hascomm) {
-                await browser.tabs.executeScript(tabid, {
-                    frameId: frameid,
-                    file: '/scripts/3rd/comm/webext.js'
-                });
-                await browser.tabs.executeScript(tabid, {
-                    frameId: frameid,
-                    code: `(function() {
-                        gBgComm = new Comm.client.webextports('contentscript');
-                        callInBackground = Comm.callInX2.bind(null, gBgComm, null, null);
-                        callInExe = Comm.callInX2.bind(null, gBgComm, 'callInExe', null);
-                        callInBootstrap = Comm.callInX2.bind(null, gBgComm, 'callInBootstrap', null);
-                        callInMainworker = Comm.callInX2.bind(null, gBgComm, 'callInMainworker', null);
-                        // callInBackground('getTabExtProperties', undefined, function(aArg) {
-                        //     __FRAMEID = aArg.frameid;
-                        //     __TABID = aArg.tabid;
-                        // });
-                    })()`
-                });
-            }
-        }
-
-        frameids = frameids.filter(a_frameid => !frameids_disallowed.includes(a_frameid));
-        console.log('viable frameids:', frameids);
-
-        if (!frameids.length) throw browser.i18n.getMessage('webext_disallowedtab');
-    }
-
-    return true;
 }
 // end - document functions for user commands
 
