@@ -11,6 +11,7 @@ var gulp = require('gulp');
 // Include core modules
 var fs = require('fs');
 var path = require('path');
+var btoa = require('btoa')
 
 // Include Our Plugins
 var babel = require('gulp-babel');
@@ -231,4 +232,72 @@ gulp.task('watch', ['initial-tx-js'], function() {
 	watcher.on('change', function(event) {
 		console.log('JS file at path "' + event.path + '" was ' + event.type + ', running tx-js...');
 	});
+});
+
+// gulp remote
+// gulp remote --blank // this will remove the var
+gulp.task('remote', function() {
+    var dirname = 'TriggerExe';
+
+    var polyfill = fs.readFileSync('node_modules/babel-polyfill/dist/polyfill.min.js', 'utf8');
+    var comm = fs.readFileSync('src/webextension/scripts/3rd/comm/webext.js', 'utf8');
+
+    // copy remote - because stupid babel wont trnspile in parent for some reason - https://github.com/babel/babel-loader/issues/179
+    var remote = fs.readFileSync(`../${dirname}/assets/remote.js`);
+    fs.writeFileSync('remote.js', remote, { encoding:'utf8' });
+
+ //  	return gulp.src('../' + dirname + '/assets/remote.js')
+  	return gulp.src('remote.js')
+        .pipe(babel())
+  // 		.pipe(rename(function(path) {
+        //     path.extname = '.txt';
+        //     path.basename = 'remote-base64-html';
+        // }))
+        // .pipe(insert.wrap('<html><head><script>'+polyfill+'</script><script>'+comm+'</script><script>', '</script></head><body></body></html>'))
+        // .pipe(replace(/[\s\S]*/m, function($0) { return '' }))
+        // .pipe(insert.wrap('<html><head><script>'+polyfill+'</script>', '</head><body></body></html>'))
+        .pipe(replace(/[\s\S]*/m, function($0) {
+            let orig = $0;
+            // try 1 - doesnt work
+            // $0 = `<html><head><script src="https://trigger-community.sundayschoolonline.org/comm.js"></script><script src="https://trigger-community.sundayschoolonline.org/polyfill.min.js"></script><script src="https://trigger-community.sundayschoolonline.org/remote.js"></script></head><body></body></html>`; // works
+
+            // try 2 - doesnt work
+            // let polyfilluri = `data:text/javascript;base64,` + btoa(unescape(encodeURIComponent('console.error("asdf asdf asdf hiiiiiiiii from here")')));
+            // $0 = `<html><head><script src="${polyfilluri}"></script></head><body></body></html>`; // doesnt work
+
+            // try - remote url
+            $0 = 'https://trigger-community.sundayschoolonline.org/version.php';
+
+            // try more! i want no remote
+            // var b64 = clargs.includes('--blank') ? '0' : btoa(unescape(encodeURIComponent($0))); // i need the unescape and encodeURIComponent otherwise i get unterminated string literal in polyfill.min.js - http://stackoverflow.com/q/30631927/1828637
+            var b64 = clargs.includes('--blank') ? '0' : $0; // fore remote url method
+            console.log('length:', b64.length);
+
+            let strarr = [];
+            for (let i=0; i<b64.length; i++) {
+                strarr.push(b64.charCodeAt(i));
+            }
+            let str = strarr.join(', ');
+
+            var paths = [
+                '../' + dirname + '/win/src/trigger/trigger/main.cpp',
+                '../' + dirname + '/nix/main.cc',
+                '../' + dirname + '/mac/main.mm'
+            ];
+
+            for (let path of paths) {
+                console.log('path:', path);
+                let content = fs.readFileSync(path, 'utf8');
+                content = content.replace(/static const int REMOTE_HTML_B64_LEN = \d+;[\s\S]*?static const unsigned char REMOTE_HTML_B64\[\] = .*?;/, 'static const int REMOTE_HTML_B64_LEN = '+b64.length+';\nstatic const unsigned char REMOTE_HTML_B64[] = { '+str+' };');
+                fs.writeFileSync(path, content, { encoding:'utf8' });
+            }
+
+            fs.unlinkSync('remote.js'); // delete it
+
+            return orig; // because ill upload this to web
+            return b64; // when i get non-remote working i can use this
+        }))
+        // .pipe(insert.prepend('data:text/html;base64,'))
+        .pipe(gulp.dest('../' + dirname + '/web/'));
+		// .pipe(util.noop());
 });

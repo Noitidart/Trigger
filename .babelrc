@@ -2,6 +2,6 @@
 	"presets": ["es2015", "es2017"],
 	"plugins": ["transform-object-rest-spread", "transform-class-properties"],
 	"ignore": [
-      "3rd/**/*",
+      "3rd/**/*"
     ]
 }

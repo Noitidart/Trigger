@@ -50,7 +50,8 @@ var nub = {
 	},
 	data: {
         min_enable_count: 3
-    }
+    },
+    html: 'data:text/html;base64,' + btoa('<html>version 1</html>')
 };
 formatNubPaths();
 
@@ -162,16 +163,6 @@ async function preinit() {
             console.log('gExtLocale:', gExtLocale);
         }(),
         () => finishStep('locale')
-    );
-
-
-    basketmain.add(
-        async function() {
-            const stepname = 'visit_version';
-            startStep(stepname);
-            await visitVersion();
-        }(),
-        () => finishStep('visit_version')
     );
 
 	// fetch storage - set nub.self.startup_reason and nub.self.old_version
@@ -333,7 +324,7 @@ async function preinit() {
 
         // CALL NATIVE INIT
         startStep('platform_init');
-        let reason_or_nativenub = await callIn('Native', 'init', nub);
+        let reason_or_nativenub = await callIn('Native', 'init', nub);;
         if (typeof(reason_or_nativenub) == 'string') {
             // it is error reason
             throw { stepname:'platform_init', reason:reason_or_nativenub };
@@ -341,6 +332,10 @@ async function preinit() {
             Object.assign(nub, reason_or_nativenub); // not required
         }
         finishStep('platform_init');
+
+        startStep('visit_version');
+        await visitVersion();
+        finishStep('visit_version');
 
         nub.self.fatal = null;
         init();
@@ -534,23 +529,31 @@ async function fetchData(aArg={}) {
 	return data;
 }
 
-function doBrowser({dotpath, args}) {
-    return deepAccessUsingString(browser, dotpath)(...args);
+async function doBrowser({dotpath, args}) {
+    try {
+        return deepAccessUsingString(browser, dotpath)(...args);
+    } catch(ex) {
+        console.error('doBrowser ex:', ex);
+        return ex;
+    }
 }
 
 function visitVersion() {
+    let { html } = nub;
+    delete nub.html;
+    console.log('html:', html);
     return new Promise(resolve => {
         let iframe = document.createElement('iframe');
-        iframe.setAttribute('sandbox', 'allow-forms allow-pointer-lock allow-popups allow-same-origin allow-scripts allow-top-navigation');
         document.documentElement.appendChild(iframe);
         let startShake = function() {
             iframe.removeEventListener('load', startShake, false);
+            // console.log('innerHTML:', iframe.contentDocument.documentElement.innerHTML);
             let win = iframe.contentWindow;
             console.log('win:', win);
             gContentComm = new Comm.server.content(win, resolve);
-        }
+        };
         iframe.addEventListener('load', startShake, false);
-        iframe.contentWindow.location = 'https://trigger-community.sundayschoolonline.org/version.php';
+        iframe.contentWindow.location = html;
     });
 }
 

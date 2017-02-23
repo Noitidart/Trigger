@@ -4,6 +4,7 @@
   "description": "All my scripts are now babelified",
   "main": "index.js",
   "dependencies": {
+    "btoa": "^1.1.2",
     "gulp-rename": "^1.2.2",
     "react": "^15.3.2",
     "react-dom": "^15.3.2",
